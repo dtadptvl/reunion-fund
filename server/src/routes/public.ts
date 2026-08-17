@@ -138,7 +138,7 @@ export async function publicRoutes(
       return {
         success: true,
         requestId: reqRow.id,
-        message: 'Đã gửi yêu cầu sửa tên. Thủ quỹ sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.',
+        message: 'Đã gửi yêu cầu sửa tên. Ban Quản trị sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.',
       };
     } catch (err: any) {
       return reply.status(400).send({ error: err?.message || 'Không thể tạo yêu cầu sửa tên' });

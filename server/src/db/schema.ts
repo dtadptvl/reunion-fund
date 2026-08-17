@@ -171,6 +171,34 @@ export interface AttachmentRow {
   created_at: string;
 }
 
+export type UserRole = 'ADMIN' | 'MEMBER';
+export type UserStatus = 'PENDING_VERIFICATION' | 'ACTIVE' | 'LOCKED';
+
+export interface UserRow {
+  id: string;
+  member_id?: string | null;
+  username: string;
+  email?: string | null;
+  password_hash: string;
+  full_name: string;
+  role: UserRole;
+  status: UserStatus;
+  email_verified: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailVerificationRow {
+  id: string;
+  user_id: string;
+  email: string;
+  token: string;
+  code: string;
+  expires_at: string;
+  used_at?: string | null;
+  created_at: string;
+}
+
 export interface StaffUserRow {
   id: string;
   username: string;

@@ -22,8 +22,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 const MATCH_METHOD_LABELS: Record<string, string> = {
   EXACT_PAYMENT_CODE: 'Khớp mã thanh toán',
   DETERMINISTIC_NAME_FALLBACK: 'Khớp tên tự động',
-  MANUAL_TREASURER_ASSIGNMENT: 'Thủ quỹ chỉ định',
-  MANUAL_ASSIGNMENT: 'Thủ quỹ chỉ định',
+  MANUAL_TREASURER_ASSIGNMENT: 'Admin chỉ định',
+  MANUAL_ASSIGNMENT: 'Admin chỉ định',
   UNRESOLVED: 'Chưa xác định',
 };
 
@@ -265,7 +265,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
   };
 
   if (loading || !exceptions) {
-    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải bảng điều khiển thủ quỹ...</div>;
+    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải bảng điều khiển Quản trị...</div>;
   }
 
   return (
@@ -274,7 +274,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       <div className="card">
         <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h1 className="card-title">Bảng Điều Khiển Thủ Quỹ</h1>
+            <h1 className="card-title">Bảng Điều Khiển Quản Trị</h1>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
               Xin chào, <strong>{user?.fullName || user?.username}</strong>
             </div>
@@ -1041,7 +1041,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
                   rows={3}
                   value={editForm.notes}
                   onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                  placeholder="Ghi chú chi tiết cho thủ quỹ và tập thể lớp..."
+                  placeholder="Ghi chú chi tiết cho Ban Quản trị và tập thể lớp..."
                   style={{
                     width: '100%',
                     padding: '8px 12px',

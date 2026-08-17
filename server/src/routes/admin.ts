@@ -44,12 +44,23 @@ export async function adminRoutes(
     const sessionToken = (request.cookies as any)?.session_token;
     const session = options.authService.validateSession(sessionToken);
     if (!session) {
-      return reply.status(401).send({ error: 'Yêu cầu đăng nhập tài khoản thủ quỹ' });
+      return reply.status(401).send({ error: 'Yêu cầu đăng nhập tài khoản Quản trị' });
     }
     (request as any).user = session;
   };
 
-  // 1. Treasurer Login
+  // Middleware helper to enforce ADMIN role
+  const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    await requireAuth(request, reply);
+    if (reply.sent) return;
+
+    const user = (request as any).user;
+    if (!user || user.role !== 'ADMIN') {
+      return reply.status(403).send({ error: 'Bạn không có quyền quản trị. Chức năng này chỉ dành cho Admin.' });
+    }
+  };
+
+  // 1. Admin / Staff Login
   app.post('/api/v1/admin/login', async (request, reply) => {
     const ip = request.ip || '127.0.0.1';
     const now = Date.now();
@@ -70,20 +81,30 @@ export async function adminRoutes(
       return reply.status(400).send({ error: 'Vui lòng nhập tên đăng nhập và mật khẩu' });
     }
 
-    const session = await options.authService.authenticate(username, password);
-    if (!session) {
+    const authResult = await options.authService.authenticate(username, password);
+    if (authResult.status === 'PENDING_VERIFICATION') {
+      return reply.status(403).send({
+        error: authResult.error || 'Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư để kích hoạt tài khoản.',
+        requiresVerification: true,
+        email: authResult.email,
+        userId: authResult.userId,
+      });
+    }
+
+    if (authResult.status !== 'SUCCESS' || !authResult.session) {
       const current = failedLoginAttempts.get(ip) || { count: 0, resetAt: now + LOGIN_LOCKOUT_MS };
       failedLoginAttempts.set(ip, {
         count: current.count + 1,
         resetAt: now + LOGIN_LOCKOUT_MS,
       });
 
-      return reply.status(401).send({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
+      return reply.status(401).send({ error: authResult.error || 'Tên đăng nhập hoặc mật khẩu không chính xác' });
     }
 
     // Reset failed attempts on success
     failedLoginAttempts.delete(ip);
 
+    const session = authResult.session;
     const token = options.authService.createSession(session);
     reply.setCookie('session_token', token, {
       path: '/',
@@ -104,7 +125,7 @@ export async function adminRoutes(
     return { success: true, user: session };
   });
 
-  // 2. Treasurer Logout
+  // 2. Admin Logout
   app.post('/api/v1/admin/logout', async (request, reply) => {
     const sessionToken = (request.cookies as any)?.session_token;
     if (sessionToken) {
@@ -120,7 +141,7 @@ export async function adminRoutes(
   });
 
   // 4. Exception Queues (Cần xử lý)
-  app.get('/api/v1/admin/exceptions', { preHandler: [requireAuth] }, async () => {
+  app.get('/api/v1/admin/exceptions', { preHandler: [requireAdmin] }, async () => {
     // A. Unresolved incoming contributions
     const unresolvedIncome = db
       .prepare(`
@@ -183,7 +204,7 @@ export async function adminRoutes(
   });
 
   // 4.1 Review Name Correction Request (Approve / Reject)
-  app.post('/api/v1/admin/name-corrections/:id/review', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post('/api/v1/admin/name-corrections/:id/review', { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { action } = request.body as { action: 'APPROVE' | 'REJECT' };
     const user = (request as any).user;
@@ -210,7 +231,7 @@ export async function adminRoutes(
   });
 
   // 5. Assign Unresolved Contribution
-  app.post('/api/v1/admin/contributions/:id/assign', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post('/api/v1/admin/contributions/:id/assign', { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { memberId, notes } = request.body as { memberId: string; notes?: string };
     const user = (request as any).user;
@@ -254,7 +275,7 @@ export async function adminRoutes(
   });
 
   // 5.1 Undo / Unassign Contribution
-  app.post('/api/v1/admin/contributions/:id/unassign', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post('/api/v1/admin/contributions/:id/unassign', { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = (request as any).user;
 
@@ -351,7 +372,7 @@ export async function adminRoutes(
       id
     );
 
-    // If treasurer wants to remember rule for future transactions
+    // If admin wants to remember rule for future transactions
     if (body.saveLearnedRule && body.recipientName && body.category) {
       db.prepare(`
         INSERT INTO classification_rules (id, recipient_pattern, assigned_category, suggested_title, created_by, created_at)
@@ -380,11 +401,11 @@ export async function adminRoutes(
 
     return { success: true };
   };
-  app.post('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, handleUpdateExpense);
-  app.put('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, handleUpdateExpense);
+  app.post('/api/v1/admin/expenses/:id', { preHandler: [requireAdmin] }, handleUpdateExpense);
+  app.put('/api/v1/admin/expenses/:id', { preHandler: [requireAdmin] }, handleUpdateExpense);
 
   // 6.1 Upload Proof / Receipt Attachment for Expense
-  app.post('/api/v1/admin/expenses/:id/attachments', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post('/api/v1/admin/expenses/:id/attachments', { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = (request as any).user;
 
@@ -433,7 +454,7 @@ export async function adminRoutes(
   });
 
   // 6.2 Delete Receipt Attachment
-  app.delete('/api/v1/admin/attachments/:id', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.delete('/api/v1/admin/attachments/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = (request as any).user;
 
@@ -457,7 +478,7 @@ export async function adminRoutes(
   });
 
   // 7. Manual SePay Reconciliation
-  app.post('/api/v1/admin/reconcile', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post('/api/v1/admin/reconcile', { preHandler: [requireAdmin] }, async (request, reply) => {
     try {
       const summary = await options.reconciliationService.runReconciliation('MANUAL');
       return { success: true, summary };
@@ -467,7 +488,7 @@ export async function adminRoutes(
   });
 
   // 8. Finalize Reunion Settlement
-  app.post('/api/v1/admin/settlement', { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post('/api/v1/admin/settlement', { preHandler: [requireAdmin] }, async (request, reply) => {
     const user = (request as any).user;
 
     // Check financial balance
@@ -539,11 +560,11 @@ export async function adminRoutes(
     };
   };
 
-  app.put('/api/v1/admin/config/suggested-amount', { preHandler: [requireAuth] }, handleUpdateSuggestedAmount);
-  app.post('/api/v1/admin/config/suggested-amount', { preHandler: [requireAuth] }, handleUpdateSuggestedAmount);
+  app.put('/api/v1/admin/config/suggested-amount', { preHandler: [requireAdmin] }, handleUpdateSuggestedAmount);
+  app.post('/api/v1/admin/config/suggested-amount', { preHandler: [requireAdmin] }, handleUpdateSuggestedAmount);
 
-  // 10. Financial Overview & Detailed Lists for Treasurer Dashboard
-  app.get('/api/v1/admin/financials', { preHandler: [requireAuth] }, async () => {
+  // 10. Financial Overview & Detailed Lists for Admin Dashboard
+  app.get('/api/v1/admin/financials', { preHandler: [requireAdmin] }, async () => {
     const incomeRow = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM contributions').get() as { total: number };
     const expenseRow = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM expenses').get() as { total: number };
     const totalIncome = incomeRow.total;

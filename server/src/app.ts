@@ -13,6 +13,7 @@ import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { publicRoutes } from './routes/public.js';
 import { adminRoutes } from './routes/admin.js';
+import { authRoutes } from './routes/auth.js';
 
 import { BankSyncProvider } from './providers/bank-sync/types.js';
 import { SePayProvider } from './providers/bank-sync/sepay-provider.js';
@@ -21,6 +22,9 @@ import { MockBankSyncProvider } from './providers/bank-sync/mock-provider.js';
 import { AIProvider } from './providers/ai/types.js';
 import { GeminiAIProvider } from './providers/ai/gemini-provider.js';
 import { MockAIProvider } from './providers/ai/mock-ai-provider.js';
+
+import { EmailProvider } from './providers/email/types.js';
+import { MockEmailProvider } from './providers/email/mock-email-provider.js';
 
 import { ContributionService } from './services/contribution.service.js';
 import { ExpenseService } from './services/expense.service.js';
@@ -40,6 +44,7 @@ export interface BuildAppOptions {
   db: Database.Database;
   bankSyncProvider?: BankSyncProvider;
   aiProvider?: AIProvider;
+  emailProvider?: EmailProvider;
 }
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -75,6 +80,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       ? new MockAIProvider()
       : new GeminiAIProvider(config.GEMINI_API_KEY, config.GEMINI_MODEL));
 
+  const emailProvider = options.emailProvider || new MockEmailProvider();
+
   // Services
   const contributionService = new ContributionService(db);
   const expenseService = new ExpenseService(db, aiProvider);
@@ -86,7 +93,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     contributionService,
     expenseService
   );
-  const authService = new AuthService(db);
+  const authService = new AuthService(db, emailProvider);
   authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
@@ -152,6 +159,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     memberService,
     exportService,
     attachmentService,
+  });
+  app.register(authRoutes, {
+    db,
+    authService,
+    auditService,
   });
   app.register(adminRoutes, {
     db,

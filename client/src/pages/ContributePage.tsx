@@ -172,7 +172,7 @@ export const ContributePage: React.FC = () => {
       if (res.ok) {
         setShowCorrectionModal(false);
         setCorrectionSuccessMsg(
-          data.message || 'Đã gửi yêu cầu sửa tên. Thủ quỹ sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.'
+          data.message || 'Đã gửi yêu cầu sửa tên. Ban Quản trị sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.'
         );
       } else {
         alert(data.error || 'Có lỗi xảy ra khi gửi yêu cầu');

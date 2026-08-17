@@ -7,15 +7,18 @@ import { ContributorsPage } from './pages/ContributorsPage.js';
 import { ExpensesPage } from './pages/ExpensesPage.js';
 import { SettlementPage } from './pages/SettlementPage.js';
 import { LoginPage } from './pages/LoginPage.js';
+import { RegisterPage } from './pages/RegisterPage.js';
+import { VerifyEmailPage } from './pages/VerifyEmailPage.js';
 import { AdminDashboardPage } from './pages/AdminDashboardPage.js';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [pendingVerifyEmail, setPendingVerifyEmail] = useState<string>('');
 
   useEffect(() => {
-    // Check existing session
-    fetch('/api/v1/admin/me')
+    // Check existing session on load
+    fetch('/api/v1/auth/me')
       .then((res) => {
         if (res.ok) return res.json();
         return null;
@@ -29,14 +32,37 @@ export const App: React.FC = () => {
   }, []);
 
   const handleLogout = async () => {
-    await fetch('/api/v1/admin/logout', { method: 'POST' });
+    try {
+      await fetch('/api/v1/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     setCurrentUser(null);
     setCurrentTab('home');
   };
 
+  const handleRegisterSuccess = (email: string) => {
+    setPendingVerifyEmail(email);
+    setCurrentTab('verify-email');
+  };
+
+  const handleLoginSuccess = (user: any) => {
+    setCurrentUser(user);
+    if (user.role === 'ADMIN') {
+      setCurrentTab('admin');
+    } else {
+      setCurrentTab('home');
+    }
+  };
+
   return (
     <div className="app-container">
-      <Navbar currentTab={currentTab} onSelectTab={setCurrentTab} />
+      <Navbar
+        currentTab={currentTab}
+        currentUser={currentUser}
+        onSelectTab={setCurrentTab}
+        onLogout={handleLogout}
+      />
 
       <main className="main-content">
         {currentTab === 'home' && <HomePage onGoToContribute={() => setCurrentTab('contribute')} />}
@@ -44,33 +70,74 @@ export const App: React.FC = () => {
         {currentTab === 'contributors' && <ContributorsPage />}
         {currentTab === 'expenses' && <ExpensesPage />}
         {currentTab === 'settlement' && <SettlementPage />}
+
+        {currentTab === 'register' && (
+          <RegisterPage
+            onRegisterSuccess={handleRegisterSuccess}
+            onGoToLogin={() => setCurrentTab('login')}
+          />
+        )}
+
+        {currentTab === 'verify-email' && (
+          <VerifyEmailPage
+            initialEmail={pendingVerifyEmail}
+            onVerificationSuccess={() => setCurrentTab('login')}
+            onGoToLogin={() => setCurrentTab('login')}
+          />
+        )}
+
         {currentTab === 'login' && (
           currentUser ? (
-            <AdminDashboardPage user={currentUser} onLogout={handleLogout} />
+            currentUser.role === 'ADMIN' ? (
+              <AdminDashboardPage user={currentUser} onLogout={handleLogout} />
+            ) : (
+              <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
+                <h2 style={{ color: 'var(--primary)', marginTop: 0 }}>Đã Đăng Nhập Thành Công</h2>
+                <p>Xin chào <strong>{currentUser.fullName}</strong>!</p>
+                <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
+                  Về Trang Chủ
+                </button>
+              </div>
+            )
           ) : (
             <LoginPage
-              onLoginSuccess={(user) => {
-                setCurrentUser(user);
-                setCurrentTab('admin');
+              onLoginSuccess={handleLoginSuccess}
+              onGoToRegister={() => setCurrentTab('register')}
+              onGoToVerify={(email) => {
+                if (email) setPendingVerifyEmail(email);
+                setCurrentTab('verify-email');
               }}
             />
           )
         )}
+
         {currentTab === 'admin' && (
           currentUser ? (
-            <AdminDashboardPage user={currentUser} onLogout={handleLogout} />
+            currentUser.role === 'ADMIN' ? (
+              <AdminDashboardPage user={currentUser} onLogout={handleLogout} />
+            ) : (
+              <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
+                <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
+                <p>Bạn đang đăng nhập với vai trò thành viên ({currentUser.fullName}). Trang Quản trị chỉ dành cho Ban Quản trị lớp.</p>
+                <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
+                  Về Trang Chủ
+                </button>
+              </div>
+            )
           ) : (
             <LoginPage
-              onLoginSuccess={(user) => {
-                setCurrentUser(user);
-                setCurrentTab('admin');
+              onLoginSuccess={handleLoginSuccess}
+              onGoToRegister={() => setCurrentTab('register')}
+              onGoToVerify={(email) => {
+                if (email) setPendingVerifyEmail(email);
+                setCurrentTab('verify-email');
               }}
             />
           )
         )}
       </main>
 
-      <Footer onSelectTab={setCurrentTab} />
+      <Footer currentUser={currentUser} onSelectTab={setCurrentTab} />
     </div>
   );
 };

@@ -33,7 +33,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute }) => {
         <div className="hero-subtitle">KỶ NIỆM 10 NĂM RA TRƯỜNG</div>
         <h1 className="hero-title">{overview.eventTitle || 'LỚP A1 — KHÓA 48'}</h1>
         <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '16px' }}>
-          Niên khóa 2013–2016
+          Niên khóa 2013–2016 — Trường THPT Văn Lâm
         </div>
 
         <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>SỐ DƯ QUỸ HIỆN TẠI</div>
