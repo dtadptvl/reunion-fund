@@ -34,7 +34,8 @@ async function bootstrap() {
 
     // Setup Reconciliation Services
     const bankSyncProvider =
-      config.SEPAY_ENVIRONMENT === 'sandbox' && config.SEPAY_API_TOKEN === 'placeholder_api_token'
+      config.BANK_SYNC_PROVIDER === 'MOCK' ||
+      (config.SEPAY_ENVIRONMENT === 'sandbox' && config.SEPAY_API_TOKEN === 'placeholder_api_token')
         ? new MockBankSyncProvider()
         : new SePayProvider({
             baseUrl: config.SEPAY_BASE_URL,

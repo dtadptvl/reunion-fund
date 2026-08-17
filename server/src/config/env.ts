@@ -12,6 +12,7 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().default('./data/reunion.db'),
   STORAGE_PATH: z.string().default('./data/uploads'),
 
+  BANK_SYNC_PROVIDER: z.enum(['SEPAY', 'MOCK']).default('SEPAY'),
   SEPAY_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
   SEPAY_BASE_URL: z.string().default('https://userapi-sandbox.sepay.vn/v2'),
   SEPAY_API_TOKEN: z.string().default('placeholder_api_token'),
