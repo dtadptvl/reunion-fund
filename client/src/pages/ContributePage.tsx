@@ -206,26 +206,54 @@ export const ContributePage: React.FC = () => {
                 <div>
                   {/* Live Autocomplete Search Input */}
                   <div ref={autocompleteRef} style={{ position: 'relative', marginBottom: '10px' }}>
-                    <input
-                      type="text"
-                      placeholder="Gõ để tìm tên trong danh sách 40 thành viên..."
-                      value={searchQuery}
-                      onFocus={() => setShowSuggestions(true)}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setShowSuggestions(true);
-                        // If user completely cleared the search query, clear selection
-                        if (!e.target.value.trim()) {
-                          setSelectedMemberId('');
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--border-color)',
-                      }}
-                    />
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="Gõ để tìm tên trong danh sách 40 thành viên..."
+                        value={searchQuery}
+                        onFocus={() => setShowSuggestions(true)}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setShowSuggestions(true);
+                          // If search input value no longer matches currently selected member, reset selection
+                          if (selectedMember && e.target.value !== getMemberDisplayName(selectedMember)) {
+                            setSelectedMemberId('');
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 38px 10px 14px',
+                          borderRadius: 'var(--radius-md)',
+                          border: `1px solid ${selectedMemberId ? 'var(--primary)' : 'var(--border-color)'}`,
+                          fontWeight: selectedMemberId ? 600 : 400,
+                          background: selectedMemberId ? 'var(--bg-card-subtle)' : '#ffffff',
+                        }}
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMemberId('');
+                            setSearchQuery('');
+                            setShowSuggestions(true);
+                            setCorrectionSuccessMsg('');
+                          }}
+                          style={{
+                            position: 'absolute',
+                            right: '10px',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            fontSize: '1rem',
+                            padding: '4px 6px',
+                          }}
+                          title="Xóa lựa chọn"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
 
                     {/* Autocomplete Suggestion Dropdown */}
                     {showSuggestions && (
@@ -277,26 +305,6 @@ export const ContributePage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Synchronized Dropdown Select */}
-                  <select
-                    value={selectedMemberId}
-                    onChange={(e) => handleSelectMember(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-color)',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    <option value="">-- Chọn thành viên lớp --</option>
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.full_name} {m.disambiguator ? `(${m.disambiguator})` : ''}
-                      </option>
-                    ))}
-                  </select>
-
                   {/* Name correction link when member selected */}
                   {selectedMemberId && selectedMember && (
                     <div style={{ marginBottom: '12px' }}>
@@ -343,7 +351,7 @@ export const ContributePage: React.FC = () => {
                         fontWeight: 600,
                       }}
                     >
-                      + Không có tên trong danh sách lớp
+                      + Không có tên trong danh sách
                     </button>
                   </div>
                 </div>
