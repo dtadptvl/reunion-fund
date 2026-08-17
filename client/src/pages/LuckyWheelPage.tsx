@@ -23,6 +23,15 @@ interface CompletedPrize {
   completedAt: string;
 }
 
+interface BackgroundMusicMetadata {
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  actor: string;
+}
+
 interface LuckyWheelState {
   serverTime: string;
   status: 'IDLE' | 'SPINNING' | 'FINISHED';
@@ -38,6 +47,9 @@ interface LuckyWheelState {
     prizeOrder: number;
     durationSeconds: number;
   } | null;
+  hasBackgroundMusic: boolean;
+  backgroundMusicMetadata: BackgroundMusicMetadata | null;
+  allowTestReset: boolean;
   activeDraw: {
     prizeId: string;
     prizeTitle: string;
@@ -87,14 +99,18 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
   // Initial presentation start overlay
   const [showStartOverlay, setShowStartOverlay] = useState<boolean>(true);
 
-  // Admin draw trigger state
+  // Admin draw trigger & reset state
   const [triggering, setTriggering] = useState<boolean>(false);
+  const [resetting, setResetting] = useState<boolean>(false);
   const [adminMessage, setAdminMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // YouTube background music state
+  // Native Audio player state
   const [musicPlaying, setMusicPlaying] = useState<boolean>(false);
   const [musicMuted, setMusicMuted] = useState<boolean>(false);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [uploadingMusic, setUploadingMusic] = useState<boolean>(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastActiveDrawStartedAt = useRef<string | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -133,6 +149,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               });
             }
           }
+        } else {
+          // If no active draw (e.g. after reset)
+          setRevealedWinner(null);
+          setIsSpinningLocal(false);
+          lastActiveDrawStartedAt.current = null;
         }
       }
     } catch (err) {
@@ -327,15 +348,41 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     ctx.restore();
   }, [wheelState, currentRotation]);
 
-  // Handle Presentation Start (Music + Fullscreen in 1 user gesture)
+  // Presentation Start: Native Audio Play + Fullscreen
   const handleStartPresentation = () => {
     setShowStartOverlay(false);
-    setMusicPlaying(true);
-    setMusicMuted(false);
+
+    if (audioRef.current && wheelState?.hasBackgroundMusic) {
+      audioRef.current.play().then(() => {
+        setMusicPlaying(true);
+      }).catch((e) => {
+        console.warn('Audio playback not started:', e);
+      });
+    }
 
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
+  };
+
+  // Toggle Audio Play/Pause
+  const handleToggleMusic = () => {
+    if (!audioRef.current) return;
+    if (musicPlaying) {
+      audioRef.current.pause();
+      setMusicPlaying(false);
+    } else {
+      audioRef.current.play().then(() => {
+        setMusicPlaying(true);
+      }).catch(() => {});
+    }
+  };
+
+  // Toggle Audio Mute
+  const handleToggleMute = () => {
+    if (!audioRef.current) return;
+    audioRef.current.muted = !audioRef.current.muted;
+    setMusicMuted(audioRef.current.muted);
   };
 
   // Toggle Fullscreen
@@ -374,6 +421,94 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       setAdminMessage({ text: err.message || 'Lỗi khi kích hoạt quay thưởng.', type: 'error' });
     } finally {
       setTriggering(false);
+    }
+  };
+
+  // Admin Upload Music File
+  const handleUploadMusic = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingMusic(true);
+    setAdminMessage(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/v1/admin/lottery/music', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Lỗi khi tải lên tập tin nhạc.');
+      }
+
+      setAdminMessage({ text: 'Đã tải lên nhạc nền trình chiếu thành công!', type: 'success' });
+      await fetchWheelState();
+      // Reload audio element src
+      if (audioRef.current) {
+        audioRef.current.load();
+      }
+    } catch (err: any) {
+      setAdminMessage({ text: err.message || 'Không thể tải lên nhạc nền.', type: 'error' });
+    } finally {
+      setUploadingMusic(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Admin Delete Music File
+  const handleDeleteMusic = async () => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa tập tin nhạc nền hiện tại?')) return;
+    setAdminMessage(null);
+
+    try {
+      const res = await fetch('/api/v1/admin/lottery/music', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi khi xóa nhạc.');
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setMusicPlaying(false);
+      setAdminMessage({ text: 'Đã xóa tập tin nhạc nền thành công.', type: 'success' });
+      await fetchWheelState();
+    } catch (err: any) {
+      setAdminMessage({ text: err.message || 'Không thể xóa nhạc nền.', type: 'error' });
+    }
+  };
+
+  // Admin Staging Reset
+  const handleResetLottery = async () => {
+    const confirmed = window.confirm(
+      '⚠️ XÁC NHẬN ĐẶT LẠI KẾT QUẢ QUAY THỬ?\n\nToàn bộ kết quả Giải Ba, Giải Nhì, Giải Nhất sẽ bị xóa để kiểm thử lại từ đầu. Danh sách đóng góp và quỹ lớp hoàn toàn không bị ảnh hưởng.'
+    );
+    if (!confirmed) return;
+
+    setResetting(true);
+    setAdminMessage(null);
+
+    try {
+      const res = await fetch('/api/v1/admin/lottery/reset', { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể đặt lại kết quả.');
+      }
+
+      setCurrentRotation(0);
+      setRevealedWinner(null);
+      setIsSpinningLocal(false);
+      lastActiveDrawStartedAt.current = null;
+      setAdminMessage({ text: 'Đã đặt lại kết quả quay thử thành công! Bắt đầu lại từ Giải Ba.', type: 'success' });
+      await fetchWheelState();
+    } catch (err: any) {
+      setAdminMessage({ text: err.message || 'Lỗi khi đặt lại kết quả.', type: 'error' });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -420,6 +555,16 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         overflowX: 'hidden',
       }}
     >
+      {/* NATIVE HTML5 AUDIO ELEMENT */}
+      <audio
+        ref={audioRef}
+        src="/api/v1/public/lottery/background-music"
+        loop
+        preload="auto"
+        onPlay={() => setMusicPlaying(true)}
+        onPause={() => setMusicPlaying(false)}
+      />
+
       {/* INITIAL PRESENTATION START OVERLAY */}
       {showStartOverlay && (
         <div
@@ -479,20 +624,6 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         </div>
       )}
 
-      {/* BACKGROUND YOUTUBE MUSIC (LOOPING) */}
-      <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        {musicPlaying && (
-          <iframe
-            ref={iframeRef}
-            width="100"
-            height="100"
-            src={`https://www.youtube.com/embed/atq9S7pp1rQ?autoplay=1&loop=1&playlist=atq9S7pp1rQ&enablejsapi=1&mute=${musicMuted ? 1 : 0}`}
-            title="Lucky Wheel Music"
-            allow="autoplay"
-          />
-        )}
-      </div>
-
       {/* TOP HEADER CONTROLS */}
       <div
         style={{
@@ -526,42 +657,44 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* MUSIC TOGGLE */}
-          <button
-            onClick={() => setMusicPlaying(!musicPlaying)}
-            style={{
-              background: musicPlaying ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-              border: `1px solid ${musicPlaying ? '#10b981' : 'rgba(255, 255, 255, 0.2)'}`,
-              color: '#ffffff',
-              padding: '6px 14px',
-              borderRadius: '20px',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            {musicPlaying ? '🎵 Tắt nhạc' : '🔊 Bật nhạc nền'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* NATIVE MUSIC CONTROLS */}
+          {wheelState?.hasBackgroundMusic && (
+            <>
+              <button
+                onClick={handleToggleMusic}
+                style={{
+                  background: musicPlaying ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                  border: `1px solid ${musicPlaying ? '#10b981' : 'rgba(255, 255, 255, 0.2)'}`,
+                  color: '#ffffff',
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {musicPlaying ? '⏸ Tạm dừng nhạc' : '▶ Phát nhạc'}
+              </button>
 
-          {musicPlaying && (
-            <button
-              onClick={() => setMusicMuted(!musicMuted)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: '#ffffff',
-                padding: '6px 12px',
-                borderRadius: '20px',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
-            >
-              {musicMuted ? '🔇' : '🔈'}
-            </button>
+              <button
+                onClick={handleToggleMute}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: '#ffffff',
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {musicMuted ? '🔇 Tắt tiếng' : '🔈 Bật tiếng'}
+              </button>
+            </>
           )}
 
           {/* FULLSCREEN */}
@@ -622,7 +755,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         )}
       </div>
 
-      {/* ADMIN CONTROL BUTTONS EMBEDDED DIRECTLY ON PRESENTATION PAGE */}
+      {/* ADMIN CONTROL BUTTONS & STAGING RESET */}
       {isAdmin && (
         <div
           style={{
@@ -630,46 +763,68 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '8px',
+            gap: '12px',
           }}
         >
-          {wheelState?.nextPrize ? (
-            <button
-              onClick={() => handleTriggerDraw(wheelState.nextPrize!.prizeId, wheelState.nextPrize!.prizeTitle)}
-              disabled={triggering || isSpinningLocal}
-              style={{
-                background: isSpinningLocal ? '#475569' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                color: '#ffffff',
-                fontWeight: 800,
-                fontSize: '1.2rem',
-                padding: '14px 36px',
-                borderRadius: '30px',
-                border: '2px solid #60a5fa',
-                cursor: isSpinningLocal ? 'not-allowed' : 'pointer',
-                boxShadow: isSpinningLocal ? 'none' : '0 0 25px rgba(37, 99, 235, 0.6)',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseOver={(e) => {
-                if (!isSpinningLocal) e.currentTarget.style.transform = 'scale(1.05)';
-              }}
-              onMouseOut={(e) => {
-                if (!isSpinningLocal) e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              {triggering
-                ? 'ĐANG KÍCH HOẠT...'
-                : isSpinningLocal
-                ? 'ĐANG QUAY THƯỞNG...'
-                : `🎯 BẮT ĐẦU QUAY ${wheelState.nextPrize.prizeTitle.toUpperCase()} (${wheelState.nextPrize.durationSeconds}S)`}
-            </button>
-          ) : (
-            <div style={{ background: '#166534', color: '#bbf7d0', padding: '8px 20px', borderRadius: '20px', fontWeight: 700, fontSize: '0.95rem' }}>
-              ✓ ĐÃ HOÀN TẤT TẤT CẢ CÁC HẠNG MỤC QUAY THƯỞNG
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
+            {wheelState?.nextPrize ? (
+              <button
+                onClick={() => handleTriggerDraw(wheelState.nextPrize!.prizeId, wheelState.nextPrize!.prizeTitle)}
+                disabled={triggering || isSpinningLocal}
+                style={{
+                  background: isSpinningLocal ? '#475569' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '1.2rem',
+                  padding: '14px 36px',
+                  borderRadius: '30px',
+                  border: '2px solid #60a5fa',
+                  cursor: isSpinningLocal ? 'not-allowed' : 'pointer',
+                  boxShadow: isSpinningLocal ? 'none' : '0 0 25px rgba(37, 99, 235, 0.6)',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseOver={(e) => {
+                  if (!isSpinningLocal) e.currentTarget.style.transform = 'scale(1.05)';
+                }}
+                onMouseOut={(e) => {
+                  if (!isSpinningLocal) e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                {triggering
+                  ? 'ĐANG KÍCH HOẠT...'
+                  : isSpinningLocal
+                  ? 'ĐANG QUAY THƯỞNG...'
+                  : `🎯 BẮT ĐẦU QUAY ${wheelState.nextPrize.prizeTitle.toUpperCase()} (${wheelState.nextPrize.durationSeconds}S)`}
+              </button>
+            ) : (
+              <div style={{ background: '#166534', color: '#bbf7d0', padding: '10px 24px', borderRadius: '20px', fontWeight: 700, fontSize: '1rem' }}>
+                ✓ ĐÃ HOÀN TẤT TẤT CẢ CÁC HẠNG MỤC QUAY THƯỞNG
+              </div>
+            )}
+
+            {/* STAGING TEST RESET BUTTON */}
+            {wheelState?.allowTestReset && (
+              <button
+                onClick={handleResetLottery}
+                disabled={resetting || isSpinningLocal}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid #ef4444',
+                  color: '#fca5a5',
+                  padding: '10px 20px',
+                  borderRadius: '20px',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {resetting ? 'Đang đặt lại...' : '🔄 Đặt lại kết quả quay thử (Staging)'}
+              </button>
+            )}
+          </div>
 
           {adminMessage && (
-            <div style={{ fontSize: '0.85rem', color: adminMessage.type === 'success' ? '#86efac' : '#fca5a5' }}>
+            <div style={{ fontSize: '0.9rem', color: adminMessage.type === 'success' ? '#86efac' : '#fca5a5', fontWeight: 600 }}>
               {adminMessage.text}
             </div>
           )}
@@ -844,6 +999,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           border: '1px solid rgba(255, 255, 255, 0.1)',
           borderRadius: '16px',
           padding: '24px',
+          marginBottom: '24px',
         }}
       >
         <h2
@@ -870,8 +1026,89 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         </div>
       </div>
 
+      {/* ADMIN BACKGROUND MUSIC MANAGEMENT SECTION */}
+      {isAdmin && (
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '1000px',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px',
+            padding: '20px 24px',
+            marginBottom: '24px',
+          }}
+        >
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fef08a', margin: '0 0 12px 0' }}>
+            🎵 Quản Lý Nhạc Nền Trình Chiếu (Admin)
+          </h3>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+            <div>
+              {wheelState?.hasBackgroundMusic && wheelState.backgroundMusicMetadata ? (
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                    ✓ Tập tin hiện tại: <strong>{wheelState.backgroundMusicMetadata.originalName}</strong>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Dung lượng: {(wheelState.backgroundMusicMetadata.sizeBytes / (1024 * 1024)).toFixed(2)} MB • Tải lên bởi: {wheelState.backgroundMusicMetadata.actor}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
+                  Chưa có tập tin nhạc nền tải lên. Vui lòng tải lên tập tin MP3/M4A/OGG.
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".mp3,.m4a,.ogg,audio/*"
+                onChange={handleUploadMusic}
+                style={{ display: 'none' }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingMusic}
+                style={{
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {uploadingMusic ? 'Đang tải lên...' : '📁 Tải lên tập tin nhạc'}
+              </button>
+
+              {wheelState?.hasBackgroundMusic && (
+                <button
+                  onClick={handleDeleteMusic}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid #ef4444',
+                    color: '#fca5a5',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🗑 Xóa nhạc
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* FOOTER NOTICE */}
-      <div style={{ marginTop: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+      <div style={{ textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
         Tỷ lệ trúng thưởng được tính toán tự động dựa trên tổng số tiền đóng góp hợp lệ của từng thành viên.
       </div>
     </div>

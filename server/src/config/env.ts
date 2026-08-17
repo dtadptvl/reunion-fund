@@ -35,6 +35,7 @@ const envSchema = z.object({
 
   RECONCILIATION_CRON: z.string().default('30 3 * * *'),
   AUTO_RECONCILE_ON_STARTUP: z.string().transform((v) => v === 'true').default('true'),
+  ALLOW_LOTTERY_TEST_RESET: z.coerce.boolean().default(false),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

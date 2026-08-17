@@ -39,6 +39,19 @@ export async function publicRoutes(
     return lotteryService.getPublicWheelState();
   });
 
+  // 0.2 Public Background Music Streaming
+  app.get('/api/v1/public/lottery/background-music', async (request, reply) => {
+    const audio = lotteryService.getBackgroundMusicFilePath();
+    if (!audio) {
+      return reply.status(404).send({ error: 'Chưa có nhạc nền được tải lên.' });
+    }
+
+    const stream = fs.createReadStream(audio.filePath);
+    reply.header('Content-Type', audio.mimeType);
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.send(stream);
+  });
+
   // 1. Overview Financial Totals & Recent Activity
   app.get('/api/v1/public/overview', async () => {
     const incomeRow = db

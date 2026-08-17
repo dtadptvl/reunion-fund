@@ -87,6 +87,12 @@ export class AuthService {
           VALUES (?, NULL, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `)
         .run(id, username, `${username}@reunion.local`, finalHash, fullName);
+    } else {
+      this.db
+        .prepare(`
+          UPDATE users SET password_hash = ?, role = 'ADMIN', status = 'ACTIVE', email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE username = ?
+        `)
+        .run(finalHash, username);
     }
 
     this.seedDefaultAdmins();

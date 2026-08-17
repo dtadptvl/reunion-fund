@@ -219,4 +219,79 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(audit.actor).toBe('tuananh_adm');
     expect(audit.entity_id).toBe('giai-ba');
   });
+
+  it('6. Background Music: Admin can upload, stream, and delete audio file without path traversal', async () => {
+    // Admin login
+    const members = memberService.searchMembers('Dương Tuấn Anh', 5);
+    const tuanAnh = members[0];
+    await authService.registerMemberAccount(tuanAnh.id, 'admin_audio', 'audio@example.com', 'pwd');
+    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('audio@example.com')!.token);
+    const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
+      username: 'admin_audio',
+      password: 'pwd',
+    });
+    const adminCookie = adminLogin.headers['set-cookie'];
+
+    // 1. Initial music request -> 404
+    const initRes = await supertest(app.server).get('/api/v1/public/lottery/background-music');
+    expect(initRes.status).toBe(404);
+
+    // 2. Upload valid MP3 (ID3 header)
+    const mp3Buffer = Buffer.concat([Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00'), Buffer.alloc(100)]);
+    const uploadRes = await supertest(app.server)
+      .post('/api/v1/admin/lottery/music')
+      .set('Cookie', adminCookie)
+      .attach('file', mp3Buffer, 'theme_gala.mp3');
+
+    expect(uploadRes.status).toBe(200);
+    expect(uploadRes.body.success).toBe(true);
+    expect(uploadRes.body.metadata.mimeType).toBe('audio/mpeg');
+
+    // 3. Public can stream audio
+    const streamRes = await supertest(app.server).get('/api/v1/public/lottery/background-music');
+    expect(streamRes.status).toBe(200);
+    expect(streamRes.headers['content-type']).toBe('audio/mpeg');
+
+    // 4. Delete audio
+    const delRes = await supertest(app.server)
+      .delete('/api/v1/admin/lottery/music')
+      .set('Cookie', adminCookie);
+    expect(delRes.status).toBe(200);
+
+    const streamAfterDel = await supertest(app.server).get('/api/v1/public/lottery/background-music');
+    expect(streamAfterDel.status).toBe(404);
+  });
+
+  it('7. Staging Lottery Reset: deletes draw history and audits reset without touching contributions', async () => {
+    const members = memberService.searchMembers('', 5);
+    members.slice(0, 3).forEach((m) => {
+      db.prepare(`
+        INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
+        VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
+      `).run(crypto.randomUUID(), m.id);
+    });
+
+    // Draw Giải Ba
+    lotteryService.triggerDraw('giai-ba', 'admin');
+    expect(lotteryService.getCompletedDraws()).toHaveLength(1);
+
+    // Reset when not allowed -> throws error
+    expect(() => lotteryService.resetLotteryState('admin', false)).toThrowError(
+      'Chức năng đặt lại chỉ khả dụng trong môi trường kiểm thử/staging.'
+    );
+
+    // Reset when allowed -> succeeds
+    lotteryService.resetLotteryState('admin_tester', true);
+
+    expect(lotteryService.getCompletedDraws()).toHaveLength(0);
+
+    // Contributions preserved
+    const totalContributed = db.prepare('SELECT SUM(amount) as total FROM contributions').get() as { total: number };
+    expect(totalContributed.total).toBe(1500000);
+
+    // Audit log created
+    const resetAudit = db.prepare("SELECT * FROM audit_logs WHERE action = 'RESET_LUCKY_WHEEL_TEST_STATE'").get() as any;
+    expect(resetAudit).toBeDefined();
+    expect(resetAudit.actor).toBe('admin_tester');
+  });
 });

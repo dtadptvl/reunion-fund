@@ -747,5 +747,53 @@ export async function adminRoutes(
       return reply.status(400).send({ error: err?.message || 'Không thể thực hiện quay thưởng.' });
     }
   });
+
+  // 19. Admin Upload Background Music for Lucky Wheel
+  app.post('/api/v1/admin/lottery/music', { preHandler: [requireAdmin] }, async (request, reply) => {
+    const user = (request as any).user;
+    const data = await request.file({
+      limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
+    });
+
+    if (!data) {
+      return reply.status(400).send({ error: 'Không tìm thấy tập tin âm thanh tải lên.' });
+    }
+
+    try {
+      const buffer = await data.toBuffer();
+      const meta = lotteryService.saveBackgroundMusic(buffer, data.filename, user.username);
+      return {
+        success: true,
+        message: 'Đã tải lên nhạc nền thành công.',
+        metadata: meta,
+      };
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể lưu tập tin nhạc nền.' });
+    }
+  });
+
+  // 20. Admin Delete Background Music
+  app.delete('/api/v1/admin/lottery/music', { preHandler: [requireAdmin] }, async (request) => {
+    const user = (request as any).user;
+    lotteryService.deleteBackgroundMusic(user.username);
+    return {
+      success: true,
+      message: 'Đã xóa nhạc nền thành công.',
+    };
+  });
+
+  // 21. Admin Staging Lottery Reset (Environment Gated)
+  app.post('/api/v1/admin/lottery/reset', { preHandler: [requireAdmin] }, async (request, reply) => {
+    const user = (request as any).user;
+    try {
+      lotteryService.resetLotteryState(user.username, config.ALLOW_LOTTERY_TEST_RESET);
+      return {
+        success: true,
+        message: 'Đã đặt lại kết quả quay thử thành công.',
+      };
+    } catch (err: any) {
+      return reply.status(403).send({ error: err?.message || 'Không thể đặt lại kết quả quay thưởng.' });
+    }
+  });
 }
 

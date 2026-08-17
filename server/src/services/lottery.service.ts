@@ -1,6 +1,9 @@
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { sortVietnameseMembers } from './member.service.js';
+import { config } from '../config/env.js';
 
 export interface MemberLotteryItem {
   id: string;
@@ -66,11 +69,23 @@ export interface LuckyWheelDrawRow {
   created_at: string;
 }
 
+export interface BackgroundMusicMetadata {
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  actor: string;
+}
+
 export interface LuckyWheelState {
   serverTime: string;
   status: 'IDLE' | 'SPINNING' | 'FINISHED';
   currentPrize: LuckyWheelPrizeDef | null;
   nextPrize: LuckyWheelPrizeDef | null;
+  hasBackgroundMusic: boolean;
+  backgroundMusicMetadata: BackgroundMusicMetadata | null;
+  allowTestReset: boolean;
   activeDraw: {
     prizeId: string;
     prizeTitle: string;
@@ -103,8 +118,64 @@ export interface LuckyWheelState {
   }>;
 }
 
+/**
+ * Validates audio file header signatures (MP3, M4A, OGG).
+ */
+export function validateAudioMagicBytes(
+  buffer: Buffer,
+  originalFilename?: string
+): { isValid: boolean; mimeType: string | null; error?: string } {
+  if (!buffer || buffer.length < 4) {
+    return { isValid: false, mimeType: null, error: 'Tập tin âm thanh rỗng hoặc không hợp lệ.' };
+  }
+
+  // 1. MP3 with ID3 tag: 49 44 33 ("ID3")
+  if (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) {
+    return { isValid: true, mimeType: 'audio/mpeg' };
+  }
+
+  // 2. MP3 frame sync without ID3: FF FB, FF F3, FF F2, FF E3 (0xFF 0xE0 mask)
+  if (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) {
+    return { isValid: true, mimeType: 'audio/mpeg' };
+  }
+
+  // 3. OGG audio: 4F 67 67 53 ("OggS")
+  if (buffer[0] === 0x4f && buffer[1] === 0x67 && buffer[2] === 0x67 && buffer[3] === 0x53) {
+    return { isValid: true, mimeType: 'audio/ogg' };
+  }
+
+  // 4. M4A / MP4 audio: offset 4: "ftyp" (66 74 79 70)
+  if (
+    buffer.length >= 12 &&
+    buffer[4] === 0x66 &&
+    buffer[5] === 0x74 &&
+    buffer[6] === 0x79 &&
+    buffer[7] === 0x70
+  ) {
+    return { isValid: true, mimeType: 'audio/mp4' };
+  }
+
+  // Fallback by safe extension
+  if (originalFilename) {
+    const ext = path.extname(originalFilename).toLowerCase();
+    if (ext === '.mp3') return { isValid: true, mimeType: 'audio/mpeg' };
+    if (ext === '.m4a') return { isValid: true, mimeType: 'audio/mp4' };
+    if (ext === '.ogg') return { isValid: true, mimeType: 'audio/ogg' };
+  }
+
+  return {
+    isValid: false,
+    mimeType: null,
+    error: 'Định dạng tập tin không được hỗ trợ (chỉ chấp nhận MP3, M4A, OGG).',
+  };
+}
+
 export class LotteryService {
-  constructor(private db: Database.Database) {}
+  private storageDir: string;
+
+  constructor(private db: Database.Database, storageDir: string = config.STORAGE_PATH) {
+    this.storageDir = storageDir;
+  }
 
   /**
    * Retrieves the configurable fixed class base fund that is excluded from lottery weight.
@@ -479,6 +550,168 @@ export class LotteryService {
   }
 
   /**
+   * Resets lucky wheel test state (STAGING ONLY gate).
+   */
+  resetLotteryState(actor: string, isAllowed: boolean): void {
+    if (!isAllowed) {
+      throw new Error('Chức năng đặt lại chỉ khả dụng trong môi trường kiểm thử/staging.');
+    }
+
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM lucky_wheel_draws').run();
+
+      this.db.prepare(`
+        INSERT INTO audit_logs (
+          id, actor, action, entity_type, entity_id, before_state, after_state, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(
+        crypto.randomUUID(),
+        actor,
+        'RESET_LUCKY_WHEEL_TEST_STATE',
+        'LUCKY_WHEEL',
+        'ALL',
+        null,
+        JSON.stringify({ resetAt: new Date().toISOString() })
+      );
+    });
+
+    tx();
+  }
+
+  // ==========================================
+  // BACKGROUND MUSIC METHODS
+  // ==========================================
+
+  getBackgroundMusicMetadata(): BackgroundMusicMetadata | null {
+    const row = this.db
+      .prepare("SELECT value FROM system_state WHERE key = 'lottery_background_music'")
+      .get() as { value: string } | undefined;
+
+    if (!row || !row.value) return null;
+    try {
+      return JSON.parse(row.value) as BackgroundMusicMetadata;
+    } catch {
+      return null;
+    }
+  }
+
+  getBackgroundMusicFilePath(): { filePath: string; mimeType: string } | null {
+    const meta = this.getBackgroundMusicMetadata();
+    if (!meta) return null;
+
+    const audioDir = path.join(this.storageDir, 'audio');
+    const fullPath = path.join(audioDir, meta.filename);
+
+    if (fs.existsSync(fullPath)) {
+      return { filePath: fullPath, mimeType: meta.mimeType };
+    }
+    return null;
+  }
+
+  saveBackgroundMusic(buffer: Buffer, originalFilename: string, actor: string): BackgroundMusicMetadata {
+    const validation = validateAudioMagicBytes(buffer, originalFilename);
+    if (!validation.isValid || !validation.mimeType) {
+      throw new Error(validation.error || 'Tập tin âm thanh không hợp lệ.');
+    }
+
+    const audioDir = path.join(this.storageDir, 'audio');
+    if (!fs.existsSync(audioDir)) {
+      fs.mkdirSync(audioDir, { recursive: true });
+    }
+
+    // Remove any previous music file
+    const oldMeta = this.getBackgroundMusicMetadata();
+    if (oldMeta) {
+      try {
+        const oldFile = path.join(audioDir, oldMeta.filename);
+        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      } catch {
+        // ignore
+      }
+    }
+
+    const ext = path.extname(originalFilename).toLowerCase() || '.mp3';
+    const safeFilename = `lottery_bgm_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+    const targetPath = path.join(audioDir, safeFilename);
+
+    fs.writeFileSync(targetPath, buffer);
+
+    const meta: BackgroundMusicMetadata = {
+      filename: safeFilename,
+      originalName: path.basename(originalFilename),
+      mimeType: validation.mimeType,
+      sizeBytes: buffer.length,
+      uploadedAt: new Date().toISOString(),
+      actor,
+    };
+
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(`
+          INSERT INTO system_state (key, value)
+          VALUES ('lottery_background_music', ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `)
+        .run(JSON.stringify(meta));
+
+      this.db
+        .prepare(`
+          INSERT INTO audit_logs (
+            id, actor, action, entity_type, entity_id, before_state, after_state, timestamp
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `)
+        .run(
+          crypto.randomUUID(),
+          actor,
+          'UPLOAD_LOTTERY_MUSIC',
+          'LOTTERY_MUSIC',
+          safeFilename,
+          oldMeta ? JSON.stringify(oldMeta) : null,
+          JSON.stringify(meta)
+        );
+    });
+
+    tx();
+
+    return meta;
+  }
+
+  deleteBackgroundMusic(actor: string): void {
+    const oldMeta = this.getBackgroundMusicMetadata();
+    if (!oldMeta) return;
+
+    const audioDir = path.join(this.storageDir, 'audio');
+    const oldFile = path.join(audioDir, oldMeta.filename);
+    try {
+      if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+    } catch {
+      // ignore
+    }
+
+    const tx = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM system_state WHERE key = 'lottery_background_music'").run();
+
+      this.db
+        .prepare(`
+          INSERT INTO audit_logs (
+            id, actor, action, entity_type, entity_id, before_state, after_state, timestamp
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `)
+        .run(
+          crypto.randomUUID(),
+          actor,
+          'DELETE_LOTTERY_MUSIC',
+          'LOTTERY_MUSIC',
+          oldMeta.filename,
+          JSON.stringify(oldMeta),
+          null
+        );
+    });
+
+    tx();
+  }
+
+  /**
    * Retrieves the current real-time synchronized state of the Lucky Wheel.
    */
   getPublicWheelState(): LuckyWheelState {
@@ -500,8 +733,6 @@ export class LotteryService {
     let currentPrize: LuckyWheelPrizeDef | null = nextPrize;
     let status: LuckyWheelState['status'] = 'IDLE';
 
-    // Calculate segments for the current state:
-    // If a draw was just triggered, use the segments snapshot of that draw or remaining segments
     let { segments, totalWeight } = this.getWheelSegments(previousWinnerIds);
 
     if (latestDraw) {
@@ -555,11 +786,16 @@ export class LotteryService {
       }
     }
 
+    const musicMeta = this.getBackgroundMusicMetadata();
+
     return {
       serverTime: now.toISOString(),
       status,
       currentPrize,
       nextPrize,
+      hasBackgroundMusic: Boolean(musicMeta),
+      backgroundMusicMetadata: musicMeta,
+      allowTestReset: config.ALLOW_LOTTERY_TEST_RESET,
       activeDraw: activeDrawInfo,
       wheelSegments: segments,
       totalEligibleWeight: totalWeight,
