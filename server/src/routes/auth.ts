@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import Database from 'better-sqlite3';
 import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
+import { ActivityService } from '../services/activity.service.js';
 import { config } from '../config/env.js';
 
 export async function authRoutes(
@@ -10,9 +11,11 @@ export async function authRoutes(
     db: Database.Database;
     authService: AuthService;
     auditService: AuditService;
+    activityService?: ActivityService;
   }
 ) {
   const { db, authService, auditService } = options;
+  const activityService = options.activityService || new ActivityService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -320,4 +323,63 @@ export async function authRoutes(
       contributions,
     };
   });
+
+  // 7. Get Current Member Activity RSVPs
+  app.get('/api/v1/auth/rsvps', async (request, reply) => {
+    const sessionToken = (request.cookies as any)?.session_token;
+    const session = authService.validateSession(sessionToken);
+
+    if (!session) {
+      return reply.status(401).send({ error: 'Vui lòng đăng nhập để xem thông tin đăng ký hoạt động.' });
+    }
+
+    const isLocked = activityService.isRsvpLocked();
+    const activities = activityService.getActivities();
+    const rsvps = session.memberId ? activityService.getMemberRsvps(session.memberId) : [];
+
+    return {
+      isLocked,
+      activities,
+      rsvps,
+    };
+  });
+
+  // 8. Save/Update Member Activity RSVPs
+  app.post('/api/v1/auth/rsvps', async (request, reply) => {
+    const sessionToken = (request.cookies as any)?.session_token;
+    const session = authService.validateSession(sessionToken);
+
+    if (!session) {
+      return reply.status(401).send({ error: 'Vui lòng đăng nhập để đăng ký tham gia hoạt động.' });
+    }
+
+    if (!session.memberId) {
+      return reply.status(400).send({ error: 'Tài khoản của bạn chưa được liên kết với thành viên trong danh sách lớp.' });
+    }
+
+    const body = request.body as {
+      rsvps?: Array<{
+        activityId: string;
+        participantCount: number;
+        notes?: string;
+      }>;
+    };
+
+    if (!body || !Array.isArray(body.rsvps)) {
+      return reply.status(400).send({ error: 'Dữ liệu đăng ký không hợp lệ.' });
+    }
+
+    try {
+      const result = activityService.saveMemberRsvps(
+        session.memberId,
+        session.userId,
+        body.rsvps,
+        session.username
+      );
+      return result;
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể lưu thông tin đăng ký.' });
+    }
+  });
 }
+

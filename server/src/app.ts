@@ -33,6 +33,7 @@ import { ReconciliationService } from './services/reconciliation.service.js';
 import { AuthService } from './services/auth.service.js';
 import { ExportService } from './services/export.service.js';
 import { AuditService } from './services/audit.service.js';
+import { ActivityService } from './services/activity.service.js';
 
 import multipart from '@fastify/multipart';
 import { AttachmentService } from './services/attachment.service.js';
@@ -98,6 +99,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
   const attachmentService = new AttachmentService(db, config.STORAGE_PATH);
+  const activityService = new ActivityService(db);
 
   // Security Plugins
   app.register(cors, {
@@ -159,11 +161,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     memberService,
     exportService,
     attachmentService,
+    activityService,
   });
   app.register(authRoutes, {
     db,
     authService,
     auditService,
+    activityService,
   });
   app.register(adminRoutes, {
     db,
@@ -172,6 +176,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     reconciliationService,
     auditService,
     attachmentService,
+    activityService,
   });
 
   // Serve static client bundle if available

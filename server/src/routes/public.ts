@@ -5,6 +5,7 @@ import fs from 'fs';
 import { MemberService, sortVietnameseMembers } from '../services/member.service.js';
 import { ExportService } from '../services/export.service.js';
 import { AttachmentService } from '../services/attachment.service.js';
+import { ActivityService } from '../services/activity.service.js';
 import {
   generatePaymentCode,
   formatTransferContent,
@@ -19,9 +20,16 @@ export async function publicRoutes(
     memberService: MemberService;
     exportService: ExportService;
     attachmentService: AttachmentService;
+    activityService?: ActivityService;
   }
 ) {
   const db = options.db;
+  const activityService = options.activityService || new ActivityService(db);
+
+  // 0. Public Activities & RSVPs
+  app.get('/api/v1/public/activities', async () => {
+    return activityService.getPublicActivitySummaries();
+  });
 
   // 1. Overview Financial Totals & Recent Activity
   app.get('/api/v1/public/overview', async () => {

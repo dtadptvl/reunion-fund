@@ -5,6 +5,7 @@ import { MemberService } from '../services/member.service.js';
 import { ReconciliationService } from '../services/reconciliation.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { AttachmentService } from '../services/attachment.service.js';
+import { ActivityService } from '../services/activity.service.js';
 import { ExpenseCategory } from '../db/schema.js';
 import { config } from '../config/env.js';
 
@@ -30,9 +31,11 @@ export async function adminRoutes(
     reconciliationService: ReconciliationService;
     auditService: AuditService;
     attachmentService: AttachmentService;
+    activityService?: ActivityService;
   }
 ) {
   const db = options.db;
+  const activityService = options.activityService || new ActivityService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -644,4 +647,29 @@ export async function adminRoutes(
       expenses: expensesWithAttachments,
     };
   });
+
+  // 12. Admin Activity RSVPs Overview
+  app.get('/api/v1/admin/rsvps', { preHandler: [requireAdmin] }, async () => {
+    return activityService.getAdminRsvpOverview();
+  });
+
+  // 13. Admin Lock / Reopen Activity RSVPs
+  app.post('/api/v1/admin/rsvps/lock', { preHandler: [requireAdmin] }, async (request, reply) => {
+    const user = (request as any).user;
+    const body = request.body as { isLocked?: boolean };
+
+    if (typeof body.isLocked !== 'boolean') {
+      return reply.status(400).send({ error: 'Trạng thái khóa không hợp lệ.' });
+    }
+
+    const result = activityService.setRsvpLock(body.isLocked, user.username);
+    return {
+      success: true,
+      isLocked: result.isLocked,
+      message: result.isLocked
+        ? 'Đã khóa đăng ký tham gia hoạt động.'
+        : 'Đã mở lại đăng ký tham gia hoạt động.',
+    };
+  });
 }
+

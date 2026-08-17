@@ -25,6 +25,8 @@ describe('SQLite Schema & Migrations Runner', () => {
     expect(tables).toContain('staff_users');
     expect(tables).toContain('users');
     expect(tables).toContain('email_verifications');
+    expect(tables).toContain('activities');
+    expect(tables).toContain('activity_rsvps');
     expect(tables).toContain('audit_logs');
     expect(tables).toContain('reconciliation_runs');
 

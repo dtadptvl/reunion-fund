@@ -3,9 +3,10 @@ import { formatVND, formatDateVN, getCategoryLabelVN } from '../utils/format.js'
 
 interface HomePageProps {
   onGoToContribute: () => void;
+  onGoToActivities?: () => void;
 }
 
-export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute }) => {
+export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute, onGoToActivities }) => {
   const [overview, setOverview] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,9 +40,16 @@ export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute }) => {
         <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>SỐ DƯ QUỸ HIỆN TẠI</div>
         <div className="hero-balance">{formatVND(overview.balance)}</div>
 
-        <button className="btn btn-primary btn-lg" onClick={onGoToContribute}>
-          💳 ĐÓNG QUỸ NGAY
-        </button>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '24px' }}>
+          <button className="btn btn-primary btn-lg" onClick={onGoToContribute}>
+            💳 ĐÓNG QUỸ NGAY
+          </button>
+          {onGoToActivities && (
+            <button className="btn btn-outline btn-lg" onClick={onGoToActivities}>
+              📋 KẾ HOẠCH & ĐĂNG KÝ
+            </button>
+          )}
+        </div>
 
         <div className="stats-grid">
           <div className="stat-box">

@@ -6,6 +6,7 @@ import { ContributePage } from './pages/ContributePage.js';
 import { ContributorsPage } from './pages/ContributorsPage.js';
 import { ExpensesPage } from './pages/ExpensesPage.js';
 import { SettlementPage } from './pages/SettlementPage.js';
+import { ActivitiesPage } from './pages/ActivitiesPage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { RegisterPage } from './pages/RegisterPage.js';
 import { VerifyEmailPage } from './pages/VerifyEmailPage.js';
@@ -51,7 +52,7 @@ export const App: React.FC = () => {
     if (user.role === 'ADMIN') {
       setCurrentTab('admin');
     } else {
-      setCurrentTab('home');
+      setCurrentTab('activities');
     }
   };
 
@@ -65,7 +66,19 @@ export const App: React.FC = () => {
       />
 
       <main className="main-content">
-        {currentTab === 'home' && <HomePage onGoToContribute={() => setCurrentTab('contribute')} />}
+        {currentTab === 'home' && (
+          <HomePage
+            onGoToContribute={() => setCurrentTab('contribute')}
+            onGoToActivities={() => setCurrentTab('activities')}
+          />
+        )}
+        {currentTab === 'activities' && (
+          <ActivitiesPage
+            currentUser={currentUser}
+            onGoToLogin={() => setCurrentTab('login')}
+            onGoToRegister={() => setCurrentTab('register')}
+          />
+        )}
         {currentTab === 'contribute' && <ContributePage />}
         {currentTab === 'contributors' && <ContributorsPage />}
         {currentTab === 'expenses' && <ExpensesPage />}

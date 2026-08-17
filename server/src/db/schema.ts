@@ -209,6 +209,43 @@ export interface StaffUserRow {
   created_at: string;
 }
 
+export interface ActivityRow {
+  id: string;
+  title: string;
+  description?: string | null;
+  display_order: number;
+  created_at: string;
+}
+
+export interface ActivityRSVPRow {
+  id: string;
+  activity_id: string;
+  member_id: string;
+  user_id: string;
+  participant_count: number;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActivityPublicParticipant {
+  member_id: string;
+  full_name: string;
+  disambiguator?: string | null;
+  participant_count: number;
+  updated_at: string;
+}
+
+export interface ActivityPublicSummary {
+  id: string;
+  title: string;
+  description?: string | null;
+  display_order: number;
+  total_participants: number;
+  participants: ActivityPublicParticipant[];
+}
+
+
 export interface AuditLogRow {
   id: string;
   actor: string;

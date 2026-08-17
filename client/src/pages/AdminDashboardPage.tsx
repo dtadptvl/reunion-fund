@@ -38,6 +38,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
 
+  // RSVP Management State
+  const [rsvpData, setRsvpData] = useState<any | null>(null);
+  const [lockingRsvp, setLockingRsvp] = useState(false);
+  const [rsvpLockMsg, setRsvpLockMsg] = useState('');
+
   // Upload state per expense
   const [uploadingExpenseId, setUploadingExpenseId] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<{ id: string; type: 'success' | 'error'; text: string } | null>(null);
@@ -60,13 +65,17 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       fetch('/api/v1/admin/financials').then((r) => r.json()).catch(() => null),
       fetch('/api/v1/public/members').then((r) => r.json()),
       fetch('/api/v1/public/config').then((r) => r.json()).catch(() => ({})),
+      fetch('/api/v1/admin/rsvps').then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ])
-      .then(([exData, finData, memData, cfgData]) => {
+      .then(([exData, finData, memData, cfgData, rsvps]) => {
         setExceptions(exData);
         setFinancials(finData);
         setMembers(memData.members || []);
         if (cfgData?.suggestedAmount) {
           setSuggestedAmountInput(cfgData.suggestedAmount);
+        }
+        if (rsvps) {
+          setRsvpData(rsvps);
         }
         setLoading(false);
       })
@@ -264,6 +273,29 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
     }
   };
 
+  const handleToggleRsvpLock = async (newLockState: boolean) => {
+    setLockingRsvp(true);
+    setRsvpLockMsg('');
+    try {
+      const res = await fetch('/api/v1/admin/rsvps/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isLocked: newLockState }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRsvpLockMsg(data.message);
+        loadData();
+      } else {
+        setRsvpLockMsg(`Lỗi: ${data.error}`);
+      }
+    } catch {
+      setRsvpLockMsg('Lỗi kết nối máy chủ');
+    } finally {
+      setLockingRsvp(false);
+    }
+  };
+
   if (loading || !exceptions) {
     return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải bảng điều khiển Quản trị...</div>;
   }
@@ -373,6 +405,135 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           </div>
         </form>
       </div>
+
+      {/* 2.5. Section: Quản lý Đăng ký Hoạt động Họp Lớp */}
+      {rsvpData && (
+        <div className="card">
+          <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h2 className="card-title">Quản lý Đăng ký Hoạt động Họp Lớp</h2>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Kiểm soát đăng ký tham gia các hoạt động kỷ niệm 10 năm ra trường
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  background: rsvpData.isLocked ? '#fef2f2' : '#f0fdf4',
+                  color: rsvpData.isLocked ? '#dc2626' : '#16a34a',
+                  border: `1px solid ${rsvpData.isLocked ? '#fecaca' : '#bbf7d0'}`,
+                }}
+              >
+                {rsvpData.isLocked ? '🔒 ĐÃ KHÓA ĐĂNG KÝ' : '🔓 ĐANG MỞ ĐĂNG KÝ'}
+              </span>
+
+              <button
+                className={rsvpData.isLocked ? 'btn btn-primary' : 'btn btn-outline'}
+                onClick={() => handleToggleRsvpLock(!rsvpData.isLocked)}
+                disabled={lockingRsvp}
+                style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+              >
+                {lockingRsvp
+                  ? 'Đang xử lý...'
+                  : rsvpData.isLocked
+                  ? '🔓 Mở lại đăng ký'
+                  : '🔒 Khóa đăng ký hoạt động'}
+              </button>
+            </div>
+          </div>
+
+          {rsvpLockMsg && (
+            <div
+              style={{
+                padding: '10px 14px',
+                background: 'var(--primary-bg)',
+                color: 'var(--primary-text)',
+                borderRadius: 'var(--radius-md)',
+                marginBottom: '16px',
+                fontSize: '0.9rem',
+              }}
+            >
+              {rsvpLockMsg}
+            </div>
+          )}
+
+          <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-card-subtle, #f8fafc)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+              Tổng số thành viên lớp đã đăng ký ít nhất một hoạt động:{' '}
+              <strong style={{ color: 'var(--primary)', fontSize: '1.1rem' }}>
+                {rsvpData.totalDistinctMembers} / 40 bạn
+              </strong>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {rsvpData.activitySummaries?.map((act: any) => (
+              <div
+                key={act.id}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '14px 16px',
+                  background: 'var(--bg-card)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-main)' }}>
+                      {act.title}
+                    </h3>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      {act.memberCount} thành viên lớp đăng ký
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      background: 'var(--primary-light, #eff6ff)',
+                      color: 'var(--primary, #1e40af)',
+                      padding: '4px 12px',
+                      borderRadius: '16px',
+                      fontWeight: 700,
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    Tổng số người tham gia: {act.totalPeopleCount} người
+                  </div>
+                </div>
+
+                {act.participants?.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '6px' }}>
+                    {act.participants.map((p: any, idx: number) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '6px 10px',
+                          background: 'var(--bg-card-subtle, #f8fafc)',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.85rem',
+                          border: '1px solid var(--border-color)',
+                        }}
+                      >
+                        <span>{p.fullName} {p.disambiguator ? `(${p.disambiguator})` : ''}</span>
+                        <strong style={{ color: 'var(--primary)' }}>{p.participantCount} người</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Chưa có thành viên nào đăng ký hoạt động này.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 3. Section: Yêu cầu sửa tên */}
       {exceptions.pendingCorrections?.length > 0 && (

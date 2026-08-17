@@ -28,6 +28,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             Trang chủ
           </button>
           <button
+            className={`btn-link nav-link ${currentTab === 'activities' ? 'active' : ''}`}
+            onClick={() => onSelectTab('activities')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Kế hoạch & Hoạt động
+          </button>
+          <button
             className={`btn-link nav-link ${currentTab === 'contribute' ? 'active' : ''}`}
             onClick={() => onSelectTab('contribute')}
             style={{ background: 'none', border: 'none', cursor: 'pointer' }}
