@@ -15,7 +15,6 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage.js';
 import { AdminVotingResultsPage } from './pages/AdminVotingResultsPage.js';
 import { AwardPresentationPage } from './pages/AwardPresentationPage.js';
 import { LuckyWheelPage } from './pages/LuckyWheelPage.js';
-import { AdminLuckyWheelPage } from './pages/AdminLuckyWheelPage.js';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -94,7 +93,6 @@ export const App: React.FC = () => {
         {currentTab === 'lucky-wheel' && (
           <LuckyWheelPage
             currentUser={currentUser}
-            onGoToAdmin={() => setCurrentTab('admin-lucky-wheel')}
           />
         )}
         {currentTab === 'contribute' && <ContributePage />}
@@ -129,24 +127,6 @@ export const App: React.FC = () => {
             <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
               <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
               <p>Trang trình chiếu trao giải chỉ dành cho Ban Quản trị.</p>
-              <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
-                Về Trang Chủ
-              </button>
-            </div>
-          )
-        )}
-
-        {/* ADMIN LUCKY WHEEL TAB */}
-        {currentTab === 'admin-lucky-wheel' && (
-          currentUser?.role === 'ADMIN' ? (
-            <AdminLuckyWheelPage
-              onBackToDashboard={() => setCurrentTab('admin')}
-              onOpenPublicWheel={() => setCurrentTab('lucky-wheel')}
-            />
-          ) : (
-            <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
-              <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
-              <p>Trang quản trị quay số may mắn chỉ dành cho Ban Quản trị.</p>
               <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
                 Về Trang Chủ
               </button>

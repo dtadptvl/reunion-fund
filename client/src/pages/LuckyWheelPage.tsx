@@ -62,18 +62,17 @@ interface LuckyWheelState {
 
 interface LuckyWheelPageProps {
   currentUser?: any;
-  onGoToAdmin?: () => void;
 }
 
-// Vivid festive palette for wheel segments
+// Vivid high-contrast palette for wheel segments
 const SEGMENT_COLORS = [
-  '#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4',
-  '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
-  '#14b8a6', '#84cc16', '#eab308', '#d946ef', '#0284c7',
-  '#059669', '#ea580c', '#4f46e5', '#7c3aed', '#db2777'
+  '#dc2626', '#ea580c', '#d97706', '#059669', '#0891b2',
+  '#2563eb', '#4f46e5', '#7c3aed', '#c026d3', '#e11d48',
+  '#0d9488', '#65a30d', '#ca8a04', '#9333ea', '#0284c7',
+  '#16a34a', '#f97316', '#3b82f6', '#8b5cf6', '#db2777'
 ];
 
-export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onGoToAdmin }) => {
+export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) => {
   const [wheelState, setWheelState] = useState<LuckyWheelState | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentRotation, setCurrentRotation] = useState<number>(0);
@@ -85,7 +84,14 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
     weight: number;
   } | null>(null);
 
-  // YouTube audio player state
+  // Initial presentation start overlay
+  const [showStartOverlay, setShowStartOverlay] = useState<boolean>(true);
+
+  // Admin draw trigger state
+  const [triggering, setTriggering] = useState<boolean>(false);
+  const [adminMessage, setAdminMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // YouTube background music state
   const [musicPlaying, setMusicPlaying] = useState<boolean>(false);
   const [musicMuted, setMusicMuted] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -111,13 +117,13 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
           const elapsedMs = serverNowMs - startedMs;
 
           if (elapsedMs < durationMs && elapsedMs >= 0) {
-            // New spin or currently ongoing spin
+            // Ongoing spin
             if (lastActiveDrawStartedAt.current !== startedAt) {
               lastActiveDrawStartedAt.current = startedAt;
-              startSpinAnimation(data.activeDraw.targetAngle, data.activeDraw.durationSeconds, elapsedMs);
+              startSpinAnimation(data.activeDraw.targetAngle, data.activeDraw.durationSeconds, elapsedMs, data.activeDraw);
             }
           } else if (elapsedMs >= durationMs) {
-            // Spin completed
+            // Already completed spin
             if (!isSpinningLocal && data.activeDraw.winner) {
               setRevealedWinner({
                 prizeTitle: data.activeDraw.prizeTitle,
@@ -140,24 +146,26 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Smooth Spin Animation synchronized with duration
-  const startSpinAnimation = (targetAngleDeg: number, totalDurationSec: number, elapsedMs: number) => {
+  // 2. Start Spin Animation Synchronized to Duration
+  const startSpinAnimation = (
+    targetAngleDeg: number,
+    totalDurationSec: number,
+    elapsedMs: number,
+    activeDrawData: any
+  ) => {
     setIsSpinningLocal(true);
-    setRevealedWinner(null);
+    setRevealedWinner(null); // Keep winner hidden while spinning
 
     // Pointer is at the top (270 degrees)
-    // To have targetAngle align at top 270 deg:
-    // targetRotation mod 360 = (270 - targetAngleDeg + 360) mod 360
     const desiredFinalAngle = (270 - targetAngleDeg + 360) % 360;
-    // Add large number of rotations depending on duration
-    const fullSpins = totalDurationSec >= 30 ? 25 : totalDurationSec >= 20 ? 18 : 12;
+    const fullSpins = totalDurationSec >= 30 ? 24 : totalDurationSec >= 20 ? 18 : 12;
     const finalTotalRotation = fullSpins * 360 + desiredFinalAngle;
 
     const startTimestamp = performance.now() - elapsedMs;
 
     const animate = (now: number) => {
       const progress = Math.min(1, (now - startTimestamp) / (totalDurationSec * 1000));
-      // Cubic ease-out deceleration
+      // Cubic ease-out curve for dramatic deceleration
       const easeOut = 1 - Math.pow(1 - progress, 3);
       const angle = easeOut * finalTotalRotation;
       setCurrentRotation(angle);
@@ -165,13 +173,14 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(animate);
       } else {
+        // Animation finished: reveal winner
         setIsSpinningLocal(false);
-        if (wheelState?.activeDraw?.winner) {
+        if (activeDrawData?.winner) {
           setRevealedWinner({
-            prizeTitle: wheelState.activeDraw.prizeTitle,
-            name: wheelState.activeDraw.winner.fullName,
-            disambiguator: wheelState.activeDraw.winner.disambiguator,
-            weight: wheelState.activeDraw.winner.weight,
+            prizeTitle: activeDrawData.prizeTitle,
+            name: activeDrawData.winner.fullName,
+            disambiguator: activeDrawData.winner.disambiguator,
+            weight: activeDrawData.winner.weight,
           });
         }
       }
@@ -186,23 +195,23 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
     };
   }, []);
 
-  // 3. Render Canvas Wheel
+  // 3. Render Canvas Wheel with Upright Legible Typography
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !wheelState) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const size = 600;
+    const size = 640;
     const center = size / 2;
-    const radius = center - 20;
+    const radius = center - 24;
 
     canvas.width = size;
     canvas.height = size;
 
     ctx.clearRect(0, 0, size, size);
 
-    // Save and rotate context
+    // Rotate context to current spin rotation
     ctx.save();
     ctx.translate(center, center);
     ctx.rotate((currentRotation * Math.PI) / 180);
@@ -210,13 +219,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
     const segments = wheelState.wheelSegments || [];
 
     if (segments.length === 0) {
-      // Empty wheel placeholder
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = '#334155';
+      ctx.fillStyle = '#1e293b';
       ctx.fill();
       ctx.lineWidth = 4;
-      ctx.strokeStyle = '#64748b';
+      ctx.strokeStyle = '#475569';
       ctx.stroke();
 
       ctx.fillStyle = '#94a3b8';
@@ -239,65 +247,96 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
       ctx.closePath();
       ctx.fillStyle = color;
       ctx.fill();
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
-      // Draw Text on Segment
+      // Draw Text on Segment — Upright Alignment
       ctx.save();
-      const midAngle = startRad + (endRad - startRad) / 2;
-      ctx.rotate(midAngle);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-      ctx.shadowBlur = 4;
-
+      const midAngleRad = startRad + (endRad - startRad) / 2;
+      const midAngleDeg = (seg.startAngle + seg.endAngle) / 2;
       const angleSpanDeg = seg.endAngle - seg.startAngle;
-      const fontSize = angleSpanDeg < 8 ? 10 : angleSpanDeg < 15 ? 12 : 14;
-      ctx.font = `bold ${fontSize}px sans-serif`;
 
-      const displayName = `${seg.fullName}${seg.disambiguator ? ` (${seg.disambiguator})` : ''}`;
-      // Truncate if segment is small
-      const label = angleSpanDeg < 10 ? displayName.split(' ').slice(-1)[0] : displayName;
-      ctx.fillText(label, radius - 24, fontSize / 3);
+      ctx.rotate(midAngleRad);
 
-      // Percentage label if angle is large enough
-      if (angleSpanDeg >= 14) {
-        ctx.font = `600 ${fontSize - 2}px sans-serif`;
-        ctx.fillStyle = '#fef08a';
-        ctx.fillText(`${seg.probabilityDisplay}`, radius - 24, fontSize + 4);
+      // Only draw inline text if segment is wide enough (>= 6 deg)
+      if (angleSpanDeg >= 6) {
+        // Prevent upside down text: flip by 180 deg when midAngle is between 90 and 270 deg
+        const isFlipped = midAngleDeg > 90 && midAngleDeg < 270;
+
+        if (isFlipped) {
+          ctx.rotate(Math.PI);
+          ctx.textAlign = 'left';
+        } else {
+          ctx.textAlign = 'right';
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        ctx.shadowBlur = 6;
+
+        const fontSize = angleSpanDeg < 12 ? 11 : angleSpanDeg < 20 ? 13 : 15;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+
+        const displayName = `${seg.fullName}${seg.disambiguator ? ` (${seg.disambiguator})` : ''}`;
+        const nameText = angleSpanDeg < 10 ? displayName.split(' ').slice(-1)[0] : displayName;
+
+        const textX = isFlipped ? -radius + 20 : radius - 20;
+        const textY = angleSpanDeg >= 16 ? -4 : fontSize / 3;
+
+        ctx.fillText(nameText, textX, textY);
+
+        // Render percentage if segment has enough height
+        if (angleSpanDeg >= 14) {
+          ctx.font = `bold ${fontSize - 2}px sans-serif`;
+          ctx.fillStyle = '#fef08a';
+          ctx.fillText(seg.probabilityDisplay, textX, textY + fontSize + 2);
+        }
       }
 
       ctx.restore();
     });
 
-    // Outer wheel border & glowing ring
     ctx.restore();
 
+    // Outer Golden Ring
     ctx.save();
     ctx.translate(center, center);
     ctx.beginPath();
     ctx.arc(0, 0, radius + 2, 0, 2 * Math.PI);
-    ctx.lineWidth = 8;
+    ctx.lineWidth = 10;
     ctx.strokeStyle = '#facc15';
+    ctx.shadowColor = 'rgba(234, 179, 8, 0.6)';
+    ctx.shadowBlur = 15;
     ctx.stroke();
 
     // Center Hub
     ctx.beginPath();
-    ctx.arc(0, 0, 36, 0, 2 * Math.PI);
-    ctx.fillStyle = '#1e293b';
+    ctx.arc(0, 0, 42, 0, 2 * Math.PI);
+    ctx.fillStyle = '#0f172a';
     ctx.fill();
     ctx.lineWidth = 4;
     ctx.strokeStyle = '#facc15';
     ctx.stroke();
 
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 14px sans-serif';
+    ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('12A1', 0, 0);
     ctx.restore();
   }, [wheelState, currentRotation]);
+
+  // Handle Presentation Start (Music + Fullscreen in 1 user gesture)
+  const handleStartPresentation = () => {
+    setShowStartOverlay(false);
+    setMusicPlaying(true);
+    setMusicMuted(false);
+
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
 
   // Toggle Fullscreen
   const toggleFullscreen = () => {
@@ -308,13 +347,34 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
     }
   };
 
-  // Toggle YouTube Music
-  const handleToggleMusic = () => {
-    setMusicPlaying(!musicPlaying);
-  };
+  // Admin Trigger Draw
+  const handleTriggerDraw = async (prizeId: string, prizeTitle: string) => {
+    if (triggering || isSpinningLocal) return;
+    setTriggering(true);
+    setAdminMessage(null);
 
-  const handleToggleMute = () => {
-    setMusicMuted(!musicMuted);
+    try {
+      const res = await fetch('/api/v1/admin/lottery/draw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prizeId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể thực hiện quay số.');
+      }
+
+      setAdminMessage({
+        text: `Đang quay ${prizeTitle}... Chúc may mắn!`,
+        type: 'success',
+      });
+      await fetchWheelState();
+    } catch (err: any) {
+      setAdminMessage({ text: err.message || 'Lỗi khi kích hoạt quay thưởng.', type: 'error' });
+    } finally {
+      setTriggering(false);
+    }
   };
 
   if (loading) {
@@ -336,12 +396,21 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
   }
 
   const activePrizeTitle = wheelState?.activeDraw?.prizeTitle || wheelState?.nextPrize?.prizeTitle || 'Vòng Quay May Mắn';
+  const isAdmin = currentUser?.role === 'ADMIN';
+
+  // Completed prizes display list: hide current spinning prize until revealed
+  const displayedCompletedPrizes = (wheelState?.completedPrizes || []).filter((p) => {
+    if (isSpinningLocal && wheelState?.activeDraw?.prizeId === p.prizeId) {
+      return false; // Hide from history while animation is running
+    }
+    return true;
+  });
 
   return (
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #090d16 0%, #0f172a 50%, #1e1b4b 100%)',
+        background: 'linear-gradient(135deg, #070a12 0%, #0f172a 50%, #1e1b4b 100%)',
         color: '#ffffff',
         padding: '24px 16px',
         display: 'flex',
@@ -351,7 +420,66 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
         overflowX: 'hidden',
       }}
     >
-      {/* BACKGROUND YOUTUBE MUSIC (ID: atq9S7pp1rQ) */}
+      {/* INITIAL PRESENTATION START OVERLAY */}
+      {showStartOverlay && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(3, 7, 18, 0.94)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ fontSize: '1rem', letterSpacing: '3px', textTransform: 'uppercase', color: '#fbbf24', fontWeight: 700, marginBottom: '12px' }}>
+            KỶ NIỆM 10 NĂM RA TRƯỜNG • THPT VĂN LÂM (2013–2016)
+          </div>
+          <h1
+            style={{
+              fontSize: 'clamp(2.2rem, 6vw, 3.8rem)',
+              fontWeight: 900,
+              color: '#ffffff',
+              margin: '0 0 16px 0',
+              background: 'linear-gradient(135deg, #ffffff 0%, #fef08a 50%, #eab308 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              textShadow: '0 4px 30px rgba(234, 179, 8, 0.5)',
+            }}
+          >
+            🎡 VÒNG QUAY MAY MẮN
+          </h1>
+          <p style={{ maxWidth: '600px', color: '#cbd5e1', fontSize: '1.1rem', lineHeight: 1.6, marginBottom: '32px' }}>
+            Chào mừng bạn đến với chương trình quay thưởng tri ân tập thể lớp A1. Nhấn nút bên dưới để mở toàn màn hình và bắt đầu nhạc nền gala.
+          </p>
+          <button
+            onClick={handleStartPresentation}
+            style={{
+              background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)',
+              color: '#000000',
+              fontWeight: 900,
+              fontSize: '1.3rem',
+              padding: '16px 44px',
+              borderRadius: '40px',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 0 35px rgba(234, 179, 8, 0.7)',
+              transition: 'transform 0.2s ease',
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.06)')}
+            onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+          >
+            🎬 BẮT ĐẦU TRÌNH CHIẾU
+          </button>
+        </div>
+      )}
+
+      {/* BACKGROUND YOUTUBE MUSIC (LOOPING) */}
       <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }}>
         {musicPlaying && (
           <iframe
@@ -365,17 +493,17 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
         )}
       </div>
 
-      {/* TOP CONTROLS & STATUS BAR */}
+      {/* TOP HEADER CONTROLS */}
       <div
         style={{
           width: '100%',
-          maxWidth: '1100px',
+          maxWidth: '1200px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '12px',
-          marginBottom: '20px',
+          marginBottom: '16px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -385,7 +513,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
               color: '#000000',
               fontWeight: 800,
               fontSize: '0.85rem',
-              padding: '4px 12px',
+              padding: '4px 14px',
               borderRadius: '20px',
               letterSpacing: '1px',
               textTransform: 'uppercase',
@@ -394,14 +522,14 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
             🎡 QUAY SỐ MAY MẮN
           </span>
           <span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>
-            Kỷ niệm 10 năm THPT Văn Lâm
+            Lớp A1 — Khóa 48 THPT Văn Lâm
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* MUSIC CONTROLS */}
+          {/* MUSIC TOGGLE */}
           <button
-            onClick={handleToggleMusic}
+            onClick={() => setMusicPlaying(!musicPlaying)}
             style={{
               background: musicPlaying ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
               border: `1px solid ${musicPlaying ? '#10b981' : 'rgba(255, 255, 255, 0.2)'}`,
@@ -421,7 +549,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
 
           {musicPlaying && (
             <button
-              onClick={handleToggleMute}
+              onClick={() => setMusicMuted(!musicMuted)}
               style={{
                 background: 'rgba(255, 255, 255, 0.1)',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
@@ -436,7 +564,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
             </button>
           )}
 
-          {/* FULLSCREEN BUTTON */}
+          {/* FULLSCREEN */}
           <button
             onClick={toggleFullscreen}
             style={{
@@ -452,30 +580,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
           >
             ⛶ Toàn màn hình
           </button>
-
-          {/* ADMIN SHORTCUT */}
-          {currentUser?.role === 'ADMIN' && onGoToAdmin && (
-            <button
-              onClick={onGoToAdmin}
-              style={{
-                background: '#2563eb',
-                color: '#ffffff',
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: '20px',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              ⚙ Quản trị quay
-            </button>
-          )}
         </div>
       </div>
 
-      {/* PRIZE HEADER TITLE */}
-      <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+      {/* PRIZE HEADER TITLE & ACTIVE PRIZE BANNER */}
+      <div style={{ textAlign: 'center', marginBottom: '20px' }}>
         <div
           style={{
             fontSize: 'clamp(0.9rem, 2vw, 1.1rem)',
@@ -486,7 +595,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
             marginBottom: '4px',
           }}
         >
-          {isSpinningLocal ? 'ĐANG QUAY THƯỞNG...' : wheelState?.status === 'FINISHED' ? 'ĐÃ HOÀN TẤT QUAY THƯỞNG' : 'HẠNG MỤC TIẾP THEO'}
+          {isSpinningLocal
+            ? 'ĐANG QUAY THƯỞNG...'
+            : wheelState?.status === 'FINISHED'
+            ? 'ĐÃ HOÀN TẤT QUAY THƯỞNG'
+            : 'HẠNG MỤC HIỆN TẠI'}
         </div>
         <h1
           style={{
@@ -504,111 +617,229 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
         </h1>
         {wheelState?.nextPrize && !isSpinningLocal && (
           <p style={{ color: '#94a3b8', fontSize: '0.95rem', margin: '6px 0 0 0' }}>
-            Thời lượng quay: <strong>{wheelState.nextPrize.durationSeconds} giây</strong> • Tỷ lệ phân bổ theo mức đóng góp
+            Thời lượng: <strong>{wheelState.nextPrize.durationSeconds} giây</strong> • Tỷ lệ phân bổ theo mức đóng góp
           </p>
         )}
       </div>
 
-      {/* MAIN STAGE: WHEEL + WINNER REVEAL */}
+      {/* ADMIN CONTROL BUTTONS EMBEDDED DIRECTLY ON PRESENTATION PAGE */}
+      {isAdmin && (
+        <div
+          style={{
+            marginBottom: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          {wheelState?.nextPrize ? (
+            <button
+              onClick={() => handleTriggerDraw(wheelState.nextPrize!.prizeId, wheelState.nextPrize!.prizeTitle)}
+              disabled={triggering || isSpinningLocal}
+              style={{
+                background: isSpinningLocal ? '#475569' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: '1.2rem',
+                padding: '14px 36px',
+                borderRadius: '30px',
+                border: '2px solid #60a5fa',
+                cursor: isSpinningLocal ? 'not-allowed' : 'pointer',
+                boxShadow: isSpinningLocal ? 'none' : '0 0 25px rgba(37, 99, 235, 0.6)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseOver={(e) => {
+                if (!isSpinningLocal) e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseOut={(e) => {
+                if (!isSpinningLocal) e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              {triggering
+                ? 'ĐANG KÍCH HOẠT...'
+                : isSpinningLocal
+                ? 'ĐANG QUAY THƯỞNG...'
+                : `🎯 BẮT ĐẦU QUAY ${wheelState.nextPrize.prizeTitle.toUpperCase()} (${wheelState.nextPrize.durationSeconds}S)`}
+            </button>
+          ) : (
+            <div style={{ background: '#166534', color: '#bbf7d0', padding: '8px 20px', borderRadius: '20px', fontWeight: 700, fontSize: '0.95rem' }}>
+              ✓ ĐÃ HOÀN TẤT TẤT CẢ CÁC HẠNG MỤC QUAY THƯỞNG
+            </div>
+          )}
+
+          {adminMessage && (
+            <div style={{ fontSize: '0.85rem', color: adminMessage.type === 'success' ? '#86efac' : '#fca5a5' }}>
+              {adminMessage.text}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MAIN STAGE: WHEEL + LEGEND + WINNER REVEAL */}
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
           width: '100%',
-          maxWidth: '650px',
+          maxWidth: '1100px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          alignItems: 'center',
+          gap: '32px',
           marginBottom: '32px',
         }}
       >
-        {/* WHEEL POINTER AT TOP */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '-14px',
-            zIndex: 30,
-            width: 0,
-            height: 0,
-            borderLeft: '18px solid transparent',
-            borderRight: '18px solid transparent',
-            borderTop: '36px solid #ef4444',
-            filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.8))',
-          }}
-        />
-
-        {/* CANVAS WHEEL */}
-        <div
-          style={{
-            width: 'min(90vw, 520px)',
-            height: 'min(90vw, 520px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-          }}
-        >
-          <canvas
-            ref={canvasRef}
-            style={{
-              width: '100%',
-              height: '100%',
-              borderRadius: '50%',
-              boxShadow: isSpinningLocal
-                ? '0 0 60px rgba(234, 179, 8, 0.6), 0 0 100px rgba(59, 130, 246, 0.3)'
-                : '0 10px 40px rgba(0, 0, 0, 0.5)',
-              transition: isSpinningLocal ? 'none' : 'box-shadow 0.5s ease',
-            }}
-          />
-        </div>
-
-        {/* WINNER REVEAL BANNER */}
-        {revealedWinner && (
+        {/* LEFT/CENTER: WHEEL DISPLAY */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+          {/* WHEEL POINTER AT TOP */}
           <div
             style={{
-              marginTop: '24px',
-              width: '100%',
-              maxWidth: '560px',
-              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(202, 138, 4, 0.35) 100%)',
-              border: '2px solid #facc15',
-              borderRadius: '16px',
-              padding: '20px 24px',
-              textAlign: 'center',
-              boxShadow: '0 0 40px rgba(234, 179, 8, 0.5)',
-              animation: 'fadeInUp 0.6s ease',
+              position: 'absolute',
+              top: '-16px',
+              zIndex: 30,
+              width: 0,
+              height: 0,
+              borderLeft: '20px solid transparent',
+              borderRight: '20px solid transparent',
+              borderTop: '38px solid #ef4444',
+              filter: 'drop-shadow(0 4px 10px rgba(0, 0, 0, 0.9))',
+            }}
+          />
+
+          <div
+            style={{
+              width: 'min(90vw, 500px)',
+              height: 'min(90vw, 500px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
             }}
           >
-            <div style={{ fontSize: '0.9rem', color: '#fef08a', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' }}>
-              🎉 CHÚC MỪNG CHIẾN THẮNG {revealedWinner.prizeTitle.toUpperCase()} 🎉
-            </div>
-            <div
+            <canvas
+              ref={canvasRef}
               style={{
-                fontSize: 'clamp(1.8rem, 5vw, 2.6rem)',
-                fontWeight: 900,
-                color: '#ffffff',
-                margin: '8px 0',
-                textShadow: '0 2px 20px rgba(255, 255, 255, 0.8)',
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                boxShadow: isSpinningLocal
+                  ? '0 0 60px rgba(234, 179, 8, 0.6), 0 0 100px rgba(59, 130, 246, 0.3)'
+                  : '0 10px 40px rgba(0, 0, 0, 0.6)',
+                transition: isSpinningLocal ? 'none' : 'box-shadow 0.5s ease',
               }}
-            >
-              {revealedWinner.name}
-              {revealedWinner.disambiguator && (
-                <span style={{ fontSize: '1.2rem', opacity: 0.85, marginLeft: '6px' }}>
-                  ({revealedWinner.disambiguator})
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: '0.95rem', color: '#cbd5e1' }}>
-              Mức đóng góp hợp lệ: <strong style={{ color: '#fef08a' }}>{revealedWinner.weight.toLocaleString('vi-VN')} đ</strong>
-            </div>
+            />
           </div>
-        )}
+        </div>
+
+        {/* RIGHT: ELIGIBLE MEMBERS LEGEND & LIVE STATS */}
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px',
+            padding: '20px',
+            maxHeight: '500px',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fef08a', margin: 0 }}>
+              📋 THÀNH VIÊN THAM GIA ({wheelState?.wheelSegments.length || 0})
+            </h2>
+            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+              Tổng: {wheelState?.totalEligibleWeight.toLocaleString('vi-VN')} đ
+            </span>
+          </div>
+
+          <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {wheelState?.wheelSegments.map((seg, idx) => {
+              const swatchColor = SEGMENT_COLORS[idx % SEGMENT_COLORS.length];
+              return (
+                <div
+                  key={seg.memberId}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: swatchColor, flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                      {seg.fullName}
+                      {seg.disambiguator && (
+                        <span style={{ opacity: 0.7, fontSize: '0.8rem', marginLeft: '4px' }}>
+                          ({seg.disambiguator})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fef08a' }}>
+                      {seg.probabilityDisplay}
+                    </span>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                      {seg.weight.toLocaleString('vi-VN')} đ
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
+
+      {/* WINNER REVEAL CELEBRATION (ONLY AFTER ANIMATION COMPLETES) */}
+      {revealedWinner && (
+        <div
+          style={{
+            marginBottom: '32px',
+            width: '100%',
+            maxWidth: '680px',
+            background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(202, 138, 4, 0.4) 100%)',
+            border: '2px solid #facc15',
+            borderRadius: '20px',
+            padding: '24px 30px',
+            textAlign: 'center',
+            boxShadow: '0 0 50px rgba(234, 179, 8, 0.6)',
+            animation: 'fadeInUp 0.6s ease',
+          }}
+        >
+          <div style={{ fontSize: '0.95rem', color: '#fef08a', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase' }}>
+            🎉 CHÚC MỪNG CHIẾN THẮNG {revealedWinner.prizeTitle.toUpperCase()} 🎉
+          </div>
+          <div
+            style={{
+              fontSize: 'clamp(2rem, 5vw, 3rem)',
+              fontWeight: 900,
+              color: '#ffffff',
+              margin: '8px 0',
+              textShadow: '0 2px 25px rgba(255, 255, 255, 0.9)',
+            }}
+          >
+            {revealedWinner.name}
+            {revealedWinner.disambiguator && (
+              <span style={{ fontSize: '1.3rem', opacity: 0.85, marginLeft: '8px' }}>
+                ({revealedWinner.disambiguator})
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '1rem', color: '#fef08a', fontWeight: 700 }}>
+            Mức đóng góp hợp lệ: <strong>{revealedWinner.weight.toLocaleString('vi-VN')} đ</strong>
+          </div>
+        </div>
+      )}
 
       {/* COMPLETED PRIZES RESULTS SECTION */}
       <div
         style={{
           width: '100%',
-          maxWidth: '900px',
+          maxWidth: '1000px',
           background: 'rgba(255, 255, 255, 0.05)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
           borderRadius: '16px',
@@ -631,11 +862,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser, onG
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
           {/* GIẢI BA */}
-          {renderPrizeCard('Giải Ba', 'giai-ba', wheelState?.completedPrizes)}
+          {renderPrizeCard('Giải Ba', 'giai-ba', displayedCompletedPrizes)}
           {/* GIẢI NHÌ */}
-          {renderPrizeCard('Giải Nhì', 'giai-nhi', wheelState?.completedPrizes)}
+          {renderPrizeCard('Giải Nhì', 'giai-nhi', displayedCompletedPrizes)}
           {/* GIẢI NHẤT */}
-          {renderPrizeCard('Giải Nhất', 'giai-nhat', wheelState?.completedPrizes)}
+          {renderPrizeCard('Giải Nhất', 'giai-nhat', displayedCompletedPrizes)}
         </div>
       </div>
 
@@ -657,7 +888,7 @@ function renderPrizeCard(
   return (
     <div
       style={{
-        background: winner ? 'rgba(234, 179, 8, 0.1)' : 'rgba(0, 0, 0, 0.2)',
+        background: winner ? 'rgba(234, 179, 8, 0.12)' : 'rgba(0, 0, 0, 0.25)',
         border: winner ? '1px solid #eab308' : '1px dashed rgba(255, 255, 255, 0.15)',
         borderRadius: '12px',
         padding: '16px',
