@@ -6,6 +6,7 @@ import { MemberService, sortVietnameseMembers } from '../services/member.service
 import { ExportService } from '../services/export.service.js';
 import { AttachmentService } from '../services/attachment.service.js';
 import { ActivityService } from '../services/activity.service.js';
+import { LotteryService } from '../services/lottery.service.js';
 import {
   generatePaymentCode,
   formatTransferContent,
@@ -21,10 +22,12 @@ export async function publicRoutes(
     exportService: ExportService;
     attachmentService: AttachmentService;
     activityService?: ActivityService;
+    lotteryService?: LotteryService;
   }
 ) {
   const db = options.db;
   const activityService = options.activityService || new ActivityService(db);
+  const lotteryService = options.lotteryService || new LotteryService(db);
 
   // 0. Public Activities & RSVPs
   app.get('/api/v1/public/activities', async () => {
@@ -266,30 +269,10 @@ export async function publicRoutes(
     };
   });
 
-  // 5. Contributors Public List (Alphabetical with total and items)
+  // 5. Contributors Public List (Alphabetical with lottery probability)
   app.get('/api/v1/public/contributors', async () => {
-    // List all members with aggregated contribution totals
-    const membersWithTotals = db
-      .prepare(`
-        SELECT
-          m.id,
-          m.full_name,
-          m.disambiguator,
-          COALESCE(SUM(c.amount), 0) as total_contributed,
-          COUNT(c.id) as contribution_count
-        FROM members m
-        LEFT JOIN contributions c ON m.id = c.member_id
-        GROUP BY m.id
-      `)
-      .all() as Array<{
-        id: string;
-        full_name: string;
-        disambiguator: string | null;
-        total_contributed: number;
-        contribution_count: number;
-      }>;
-
-    const sortedMembers = sortVietnameseMembers(membersWithTotals);
+    // Get canonical class members with calculated lottery statistics
+    const lotteryData = lotteryService.getMembersWithLotteryStats();
 
     // List all external confirmed contributors
     const externalContributors = db
@@ -310,11 +293,21 @@ export async function publicRoutes(
         contribution_count: number;
       }>;
 
-    const sortedExternal = sortVietnameseMembers(externalContributors);
+    const sortedExternal = sortVietnameseMembers(externalContributors).map((ext) => ({
+      ...ext,
+      disambiguator: null,
+      lottery_probability: 0,
+      lottery_probability_display: '0%',
+      is_lottery_eligible: false,
+    }));
 
     return {
-      members: sortedMembers,
+      members: lotteryData.members,
       external: sortedExternal,
+      eligiblePool: lotteryData.eligiblePool,
+      baseFundExclusion: lotteryData.baseFundExclusion,
+      formulaDescription: lotteryData.formulaDescription,
+      baseFundNote: lotteryData.baseFundNote,
     };
   });
 

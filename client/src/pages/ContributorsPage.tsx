@@ -42,10 +42,35 @@ export const ContributorsPage: React.FC = () => {
 
   return (
     <div>
+      {/* LOTTERY FORMULA & INFO BANNER */}
+      <div
+        className="card"
+        style={{
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%)',
+          borderColor: '#bbf7d0',
+          marginBottom: '20px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <span style={{ fontSize: '1.5rem' }}>🎁</span>
+          <div>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#166534', fontWeight: 700 }}>
+              Công Thức Tính Tỷ Lệ Quay Thưởng
+            </h3>
+            <p style={{ margin: '0 0 6px 0', fontSize: '0.95rem', fontWeight: 600, color: '#1e3a8a' }}>
+              Tỷ lệ quay thưởng = Tổng đóng góp của bạn / Tổng đóng góp hợp lệ của các thành viên
+            </p>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569' }}>
+              * <strong>6.000.000 ₫</strong> quỹ lớp nền không tham gia quay thưởng. Chỉ các khoản đóng góp tự nguyện hợp lệ của thành viên lớp mới được tính vào trọng số quay thưởng.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="card">
         <div className="card-header">
           <div>
-            <h1 className="card-title">Danh Sách Đóng Góp Quỹ</h1>
+            <h1 className="card-title">Danh Sách Đóng Góp Quỹ & Tỷ Lệ Quay Thưởng</h1>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
               Danh sách được sắp xếp theo bảng chữ cái. Không xếp hạng, không phân biệt mức đóng góp.
             </div>
@@ -64,6 +89,7 @@ export const ContributorsPage: React.FC = () => {
               <th>Phân loại</th>
               <th style={{ textAlign: 'center' }}>Số lần đóng</th>
               <th style={{ textAlign: 'right' }}>Tổng đã đóng</th>
+              <th style={{ textAlign: 'right' }}>Tỷ lệ quay thưởng</th>
             </tr>
           </thead>
           <tbody>
@@ -90,6 +116,9 @@ export const ContributorsPage: React.FC = () => {
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700, color: person.total_contributed > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>
                   {person.total_contributed > 0 ? formatVND(person.total_contributed) : '0 ₫'}
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: person.lottery_probability > 0 ? '#16a34a' : 'var(--text-muted)' }}>
+                  {person.type === 'Thành viên lớp' ? (person.lottery_probability_display || '0%') : '—'}
                 </td>
               </tr>
             ))}

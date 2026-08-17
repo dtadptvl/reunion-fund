@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { ActivityService } from '../services/activity.service.js';
+import { LotteryService } from '../services/lottery.service.js';
 import { config } from '../config/env.js';
 
 export async function authRoutes(
@@ -12,10 +13,12 @@ export async function authRoutes(
     authService: AuthService;
     auditService: AuditService;
     activityService?: ActivityService;
+    lotteryService?: LotteryService;
   }
 ) {
   const { db, authService, auditService } = options;
   const activityService = options.activityService || new ActivityService(db);
+  const lotteryService = options.lotteryService || new LotteryService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -277,7 +280,19 @@ export async function authRoutes(
       ipAddress: request.ip,
     });
 
-    return { success: true, user: session };
+    const lotteryStats = session.memberId ? lotteryService.getMemberPersonalStats(session.memberId) : null;
+
+    return {
+      success: true,
+      user: {
+        ...session,
+        totalContributed: lotteryStats?.totalContributed || 0,
+        lotteryProbability: lotteryStats?.lotteryProbability || 0,
+        lotteryProbabilityDisplay: lotteryStats?.lotteryProbabilityDisplay || '0%',
+        isLotteryEligible: lotteryStats?.isLotteryEligible || false,
+      },
+      lottery: lotteryStats,
+    };
   });
 
   // 5. Logout
@@ -301,6 +316,7 @@ export async function authRoutes(
 
     let memberDetails: any = null;
     let contributions: any[] = [];
+    const lotteryStats = session.memberId ? lotteryService.getMemberPersonalStats(session.memberId) : null;
 
     if (session.memberId) {
       memberDetails = db
@@ -318,9 +334,16 @@ export async function authRoutes(
     }
 
     return {
-      user: session,
+      user: {
+        ...session,
+        totalContributed: lotteryStats?.totalContributed || 0,
+        lotteryProbability: lotteryStats?.lotteryProbability || 0,
+        lotteryProbabilityDisplay: lotteryStats?.lotteryProbabilityDisplay || '0%',
+        isLotteryEligible: lotteryStats?.isLotteryEligible || false,
+      },
       member: memberDetails,
       contributions,
+      lottery: lotteryStats,
     };
   });
 

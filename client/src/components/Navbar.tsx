@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatVND } from '../utils/format.js';
 
 interface NavbarProps {
   currentTab: string;
@@ -15,6 +16,41 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <header className="navbar">
+      {/* PERSONALIZED TOP BAR FOR LOGGED-IN MEMBERS/ADMINS */}
+      {currentUser && (
+        <div
+          style={{
+            background: 'linear-gradient(90deg, #1e3a8a 0%, #2563eb 100%)',
+            color: '#ffffff',
+            padding: '6px 16px',
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '8px',
+            borderBottom: '1px solid rgba(255,255,255,0.15)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600 }}>
+              👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
+            </span>
+            <span style={{ opacity: 0.6 }}>|</span>
+            <span>
+              Đã đóng: <strong style={{ color: '#fef08a' }}>{formatVND(currentUser.totalContributed || 0)}</strong>
+            </span>
+            <span style={{ opacity: 0.6 }}>|</span>
+            <span>
+              Tỷ lệ quay thưởng: <strong style={{ color: '#86efac' }}>{currentUser.lotteryProbabilityDisplay || '0%'}</strong>
+            </span>
+          </div>
+          <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>
+            * 6.000.000 ₫ quỹ lớp nền không tham gia quay thưởng
+          </div>
+        </div>
+      )}
+
       <div className="navbar-inner">
         <a href="#home" onClick={() => onSelectTab('home')} className="brand-logo">
           🎓 Lớp A1 — Khóa 48 (2013–2016)
@@ -77,19 +113,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* AUTH STATUS BUTTONS */}
           {currentUser ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '6px' }}>
-              <span
-                style={{
-                  fontSize: '0.85rem',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  background: currentUser.role === 'ADMIN' ? 'var(--primary-light, #eff6ff)' : 'var(--bg-card)',
-                  color: currentUser.role === 'ADMIN' ? 'var(--primary, #1e40af)' : 'var(--text-main)',
-                  border: '1px solid var(--border-color)',
-                  fontWeight: 600,
-                }}
-              >
-                👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
-              </span>
               <button
                 className="btn-link nav-link"
                 onClick={onLogout}
