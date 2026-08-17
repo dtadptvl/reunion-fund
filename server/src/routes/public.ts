@@ -311,6 +311,55 @@ export async function publicRoutes(
     return { expenses };
   });
 
+  // 7.1 Public Settlement Summary & Financial Totals
+  app.get('/api/v1/public/settlement', async () => {
+    const totalInRow = db
+      .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM contributions')
+      .get() as { total: number };
+
+    const totalOutRow = db
+      .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE is_settlement_transfer = 0')
+      .get() as { total: number };
+
+    const totalSettlementRow = db
+      .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE is_settlement_transfer = 1')
+      .get() as { total: number };
+
+    const totalIn = totalInRow.total;
+    const totalOut = totalOutRow.total;
+    const totalSettlement = totalSettlementRow.total;
+    const currentBalance = totalIn - totalOut - totalSettlement;
+
+    const participatingMembersRow = db
+      .prepare('SELECT COUNT(DISTINCT member_id) as count FROM contributions WHERE member_id IS NOT NULL')
+      .get() as { count: number };
+
+    const totalMembersRow = db
+      .prepare('SELECT COUNT(*) as count FROM members')
+      .get() as { count: number };
+
+    const participatingCount = participatingMembersRow.count || 0;
+    const totalMembersCount = totalMembersRow.count || 40;
+    const averageCostPerParticipant = participatingCount > 0 ? Math.round(totalOut / participatingCount) : 0;
+
+    const systemState = db
+      .prepare('SELECT settlement_status, target_amount, event_date FROM system_state LIMIT 1')
+      .get() as any;
+
+    return {
+      totalContributions: totalIn,
+      totalExpenses: totalOut,
+      totalSettlementTransfers: totalSettlement,
+      currentBalance,
+      participatingMembersCount: participatingCount,
+      totalMembersCount,
+      averageCostPerParticipant,
+      settlementStatus: systemState?.settlement_status || 'OPEN',
+      targetAmount: systemState?.target_amount || 20000000,
+      eventDate: systemState?.event_date || '2026-08-30',
+    };
+  });
+
   // 8. Public Exports
   app.get('/api/v1/public/export/xlsx', async (_req, reply) => {
     const buffer = options.exportService.generatePublicXLSX();

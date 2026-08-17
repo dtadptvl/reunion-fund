@@ -3,6 +3,24 @@ import { BankSyncProvider, NormalizedBankTransaction } from './types.js';
 export class MockBankSyncProvider implements BankSyncProvider {
   public mockTransactions: NormalizedBankTransaction[] = [];
   public shouldVerifyWebhook = true;
+  addMockTransaction(tx: Partial<NormalizedBankTransaction>): void {
+    const fullTx: NormalizedBankTransaction = {
+      sepayId: tx.sepayId || Date.now(),
+      gateway: tx.gateway || 'MBBank',
+      transactionDate: tx.transactionDate || new Date().toISOString(),
+      accountNumber: tx.accountNumber || '0123456789',
+      subAccount: tx.subAccount || null,
+      transferType: tx.transferType || 'in',
+      transferAmount: tx.transferAmount || 500000,
+      accumulated: tx.accumulated || null,
+      code: tx.code || null,
+      content: tx.content || '',
+      description: tx.description || null,
+      referenceCode: tx.referenceCode || null,
+      rawPayload: tx.rawPayload || {},
+    };
+    this.mockTransactions.push(fullTx);
+  }
 
   verifyWebhook(_headers: Record<string, string | string[] | undefined>, _rawBody: string): boolean {
     return this.shouldVerifyWebhook;

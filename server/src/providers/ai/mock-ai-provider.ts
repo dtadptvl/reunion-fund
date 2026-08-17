@@ -13,8 +13,8 @@ export class MockAIProvider implements AIProvider {
     if (desc.includes('HOA') || desc.includes('FLOWERS')) {
       return { title: 'Hoa tươi tặng thầy cô', category: 'FLOWERS', confidence: 0.92 };
     }
-    if (desc.includes('PHOTOBOOK') || desc.includes('IN AN')) {
-      return { title: 'In photobook kỷ niệm', category: 'PRINTING', confidence: 0.90 };
+    if (desc.includes('PHOTOBOOK') || desc.includes('IN AN') || desc.includes('BANNER') || desc.includes('IN')) {
+      return { title: 'In photobook và băng rôn kỷ niệm', category: 'PRINTING', confidence: 0.90 };
     }
     if (desc.includes('MOMO') || desc.includes('QUY CHUNG')) {
       return { title: 'Chuyển số dư về quỹ chung của lớp', category: 'FUND_TRANSFER', confidence: 0.98 };

@@ -20,7 +20,6 @@ export const ContributePage: React.FC = () => {
   // Name correction modal state
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [correctingName, setCorrectingName] = useState('');
-  const [correctionNotes, setCorrectionNotes] = useState('');
   const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState('');
   const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
 
@@ -110,6 +109,7 @@ export const ContributePage: React.FC = () => {
       });
       const data = await res.json();
       if (res.ok) {
+        setShowCorrectionModal(false);
         setCorrectionSuccessMsg(
           data.message || 'Đã gửi yêu cầu sửa tên. Thủ quỹ sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.'
         );
@@ -395,13 +395,14 @@ export const ContributePage: React.FC = () => {
         )}
       </div>
 
-      {/* Modal: Yêu cầu sửa tên */}
+      {/* Modal: Yêu cầu sửa tên (Chỉ duy nhất 1 ô nhập: Tên đúng của bạn) */}
       {showCorrectionModal && selectedMember && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
-          <div className="card" style={{ maxWidth: '460px', width: '100%' }}>
+          <div className="card" style={{ maxWidth: '440px', width: '100%' }}>
             <div className="card-header">
-              <h2 className="card-title">Yêu cầu sửa tên thành viên</h2>
+              <h2 className="card-title">Sửa tên thành viên</h2>
               <button
+                type="button"
                 onClick={() => setShowCorrectionModal(false)}
                 style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}
               >
@@ -410,42 +411,32 @@ export const ContributePage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSendNameCorrection}>
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Tên hiện tại
-                </label>
-                <input
-                  type="text"
-                  disabled
-                  value={selectedMember.full_name + (selectedMember.disambiguator ? ` (${selectedMember.disambiguator})` : '')}
-                  style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-card-subtle)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
-                />
+              <div style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                Tên đang chọn:{' '}
+                <strong style={{ color: 'var(--text-main)' }}>
+                  {selectedMember.full_name}
+                  {selectedMember.disambiguator ? ` (${selectedMember.disambiguator})` : ''}
+                </strong>
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
                   Tên đúng của bạn
                 </label>
                 <input
                   type="text"
                   required
+                  autoFocus
                   value={correctingName}
                   onChange={(e) => setCorrectingName(e.target.value)}
                   placeholder="Nhập tên chính xác của bạn..."
-                  style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Ghi chú thêm (không bắt buộc)
-                </label>
-                <input
-                  type="text"
-                  value={correctionNotes}
-                  onChange={(e) => setCorrectionNotes(e.target.value)}
-                  placeholder="Ví dụ: Tên bị sai dấu, thiếu chữ lót..."
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '1rem',
+                  }}
                 />
               </div>
 
