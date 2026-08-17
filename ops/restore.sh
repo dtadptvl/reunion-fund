@@ -20,7 +20,7 @@ if [ ! -f "$ARCHIVE_FILE" ]; then
   exit 1
 fi
 
-TEMP_RESTORE_DIR=$(mktemp -d "/tmp/rf_restore_XXXXXX")
+TEMP_RESTORE_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t "rf_restore_XXXXXX")
 
 echo "=================================================="
 echo "Starting Reunion Fund Restore Test / Execution"

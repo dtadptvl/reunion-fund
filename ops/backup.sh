@@ -12,7 +12,7 @@ STORAGE_PATH="${STORAGE_PATH:-/app/uploads}"
 BACKUP_DIR="${BACKUP_DIR:-/app/backups}"
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-TEMP_WORK_DIR=$(mktemp -d "/tmp/rf_backup_${TIMESTAMP}_XXXXXX")
+TEMP_WORK_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t "rf_backup_${TIMESTAMP}_XXXXXX")
 ARCHIVE_NAME="reunion-fund-backup-${TIMESTAMP}.tar.gz"
 
 echo "=================================================="
@@ -29,20 +29,21 @@ mkdir -p "$TEMP_WORK_DIR/uploads"
 # 1. WAL-safe SQLite snapshot
 if [ -f "$DB_PATH" ]; then
   echo "[1/4] Creating WAL-safe database backup..."
+  cp "$DB_PATH" "$TEMP_WORK_DIR/data/reunion-fund.db"
+  if [ -f "${DB_PATH}-wal" ]; then cp "${DB_PATH}-wal" "$TEMP_WORK_DIR/data/reunion-fund.db-wal" 2>/dev/null || true; fi
+  if [ -f "${DB_PATH}-shm" ]; then cp "${DB_PATH}-shm" "$TEMP_WORK_DIR/data/reunion-fund.db-shm" 2>/dev/null || true; fi
+
   if command -v sqlite3 >/dev/null 2>&1; then
-    sqlite3 "$DB_PATH" "PRAGMA wal_checkpoint(TRUNCATE);"
-    sqlite3 "$DB_PATH" ".backup '$TEMP_WORK_DIR/data/reunion-fund.db'"
-  else
-    # Fallback using node SQLite checkpoint if sqlite3 CLI not in container
+    sqlite3 "$TEMP_WORK_DIR/data/reunion-fund.db" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+  elif command -v node >/dev/null 2>&1; then
     node -e "
       const { DatabaseSync } = require('node:sqlite');
-      const db = new DatabaseSync('$DB_PATH');
-      db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
-      db.close();
+      try {
+        const db = new DatabaseSync('$TEMP_WORK_DIR/data/reunion-fund.db');
+        db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+        db.close();
+      } catch (e) {}
     " 2>/dev/null || true
-    cp "$DB_PATH" "$TEMP_WORK_DIR/data/reunion-fund.db"
-    if [ -f "${DB_PATH}-wal" ]; then cp "${DB_PATH}-wal" "$TEMP_WORK_DIR/data/" 2>/dev/null || true; fi
-    if [ -f "${DB_PATH}-shm" ]; then cp "${DB_PATH}-shm" "$TEMP_WORK_DIR/data/" 2>/dev/null || true; fi
   fi
 else
   echo "WARNING: Database file not found at $DB_PATH"
