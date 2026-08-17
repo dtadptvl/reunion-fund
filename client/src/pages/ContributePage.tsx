@@ -104,7 +104,6 @@ export const ContributePage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestedName: correctingName.trim(),
-          notes: correctionNotes.trim() || undefined,
         }),
       });
       const data = await res.json();
