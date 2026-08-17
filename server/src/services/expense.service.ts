@@ -125,4 +125,43 @@ export class ExpenseService {
 
     return newExpense;
   }
+
+  /**
+   * Manual Treasurer classification override.
+   * Sets classification_source = 'MANUAL_OVERRIDE' and marks settlement status if applicable.
+   */
+  updateExpenseManual(
+    expenseId: string,
+    data: {
+      category: ExpenseCategory;
+      title: string;
+      notes?: string | null;
+      recipientName?: string | null;
+    }
+  ): ExpenseRow {
+    const isSettlement = data.category === 'FUND_TRANSFER' ? 1 : 0;
+
+    this.db.prepare(`
+      UPDATE expenses SET
+        category = ?,
+        title = ?,
+        vietnamese_title = ?,
+        notes = ?,
+        recipient_name = COALESCE(?, recipient_name),
+        classification_source = 'MANUAL_OVERRIDE',
+        is_settlement_transfer = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      data.category,
+      data.title,
+      data.title,
+      data.notes || null,
+      data.recipientName || null,
+      isSettlement,
+      expenseId
+    );
+
+    return this.db.prepare('SELECT * FROM expenses WHERE id = ?').get(expenseId) as ExpenseRow;
+  }
 }

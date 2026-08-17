@@ -363,28 +363,71 @@ describe('T1–T17 Comprehensive Functional Acceptance Matrix', () => {
     expect(expense.vietnamese_title).toBe('Đặt cọc nhà hàng buffet Sen');
   });
 
-  // T11: Ambiguous merchant QR expense handled by AI suggestion
-  it('T11: Ambiguous outgoing transaction uses AI provider suggestion', async () => {
-    const outTx: BankTransactionRow = {
-      id: 'tx-t11',
-      sepay_id: 111,
+  // T11: Ambiguous merchant QR expense -> UNKNOWN (needs review) & Clear transaction -> FOOD
+  it('T11: Ambiguous merchant QR expense returns UNKNOWN (does not hallucinate) while clear transaction classifies properly', async () => {
+    // 1. Ambiguous transaction: insufficient evidence to guess purpose
+    const ambiguousTx: BankTransactionRow = {
+      id: 'tx-t11-ambiguous',
+      sepay_id: 1111,
       gateway: 'MBBank',
       transaction_date: new Date().toISOString(),
       account_number: '0123456789',
       transfer_type: 'out',
-      transfer_amount: 850000,
-      content: 'IN BANG RON VA BANNER HOP LOP',
+      transfer_amount: 720000,
+      content: 'QR839281923 NGUYEN VAN HUNG',
       raw_payload: '{}',
       ingestion_source: 'WEBHOOK',
       is_excluded: 0,
       created_at: new Date().toISOString(),
     };
 
-    insertBankTx(outTx);
-    const expense = await expenseService.processOutgoingTransaction(outTx);
+    insertBankTx(ambiguousTx);
+    const ambiguousExpense = await expenseService.processOutgoingTransaction(ambiguousTx);
 
-    expect(expense.classification_source).toBe('GEMINI_AI');
-    expect(expense.category).toBe('PRINTING');
+    // Must be UNKNOWN and needs treasurer review - NO AI HALLUCINATION
+    expect(ambiguousExpense.category).toBe('UNKNOWN');
+    expect(ambiguousExpense.classification_source).toBe('UNKNOWN');
+    expect(ambiguousExpense.vietnamese_title).toBeNull();
+
+    // Appears in treasurer review queue
+    const pendingExpenses = db
+      .prepare('SELECT * FROM expenses WHERE category = "UNKNOWN"')
+      .all();
+    expect(pendingExpenses.length).toBeGreaterThanOrEqual(1);
+
+    // 2. Clear transaction: provides explicit evidence
+    const clearTx: BankTransactionRow = {
+      id: 'tx-t11-clear',
+      sepay_id: 1112,
+      gateway: 'MBBank',
+      transaction_date: new Date().toISOString(),
+      account_number: '0123456789',
+      transfer_type: 'out',
+      transfer_amount: 3000000,
+      content: 'DAT COC TIEC NHA HANG HUONG QUE',
+      raw_payload: '{}',
+      ingestion_source: 'WEBHOOK',
+      is_excluded: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    insertBankTx(clearTx);
+    const clearExpense = await expenseService.processOutgoingTransaction(clearTx);
+    expect(clearExpense.category).toBe('FOOD');
+    expect(clearExpense.classification_source).toBe('GEMINI_AI');
+    expect(clearExpense.ai_confidence).toBeGreaterThanOrEqual(0.8);
+
+    // 3. Manual Treasurer classification overrides and is preserved
+    const manuallyUpdated = expenseService.updateExpenseManual(ambiguousExpense.id, {
+      category: 'FLOWERS',
+      title: 'Hoa tươi tặng cô giáo chủ nhiệm',
+      notes: 'Thủ quỹ xác nhận hóa đơn hoa',
+      recipientName: 'Nguyễn Văn Hùng (Cửa hàng hoa)',
+    });
+
+    expect(manuallyUpdated.category).toBe('FLOWERS');
+    expect(manuallyUpdated.classification_source).toBe('MANUAL_OVERRIDE');
+    expect(manuallyUpdated.vietnamese_title).toBe('Hoa tươi tặng cô giáo chủ nhiệm');
   });
 
   // T12: Treasurer manual assignment of unresolved transaction
