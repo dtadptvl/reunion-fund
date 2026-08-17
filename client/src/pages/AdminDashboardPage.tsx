@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { formatVND, formatDateVN } from '../utils/format.js';
 
 interface AdminDashboardProps {
@@ -36,6 +36,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+
+  // Upload state per expense
+  const [uploadingExpenseId, setUploadingExpenseId] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<{ id: string; type: 'success' | 'error'; text: string } | null>(null);
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const loadData = () => {
     Promise.all([
@@ -115,6 +120,71 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       setAmountSaveMsg('Không thể kết nối máy chủ');
     } finally {
       setSavingAmount(false);
+    }
+  };
+
+  const handleUploadReceipts = async (expenseId: string, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    setUploadingExpenseId(expenseId);
+    setUploadMessage(null);
+
+    let successCount = 0;
+    let errorText = '';
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(`/api/v1/admin/expenses/${expenseId}/attachments`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok) {
+          successCount++;
+        } else {
+          errorText = data.error || 'Lỗi khi tải lên chứng từ';
+        }
+      } catch {
+        errorText = 'Không thể kết nối máy chủ để tải lên';
+      }
+    }
+
+    if (successCount > 0 && !errorText) {
+      setUploadMessage({ id: expenseId, type: 'success', text: `Đã tải lên ${successCount} chứng từ thành công!` });
+    } else if (errorText) {
+      setUploadMessage({ id: expenseId, type: 'error', text: `Lỗi tải lên: ${errorText}` });
+    }
+
+    // Reset file input
+    if (fileInputRefs.current[expenseId]) {
+      fileInputRefs.current[expenseId]!.value = '';
+    }
+
+    setUploadingExpenseId(null);
+    loadData();
+  };
+
+  const handleDeleteReceipt = async (attachmentId: string, originalName: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa chứng từ "${originalName}"?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/v1/admin/attachments/${attachmentId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(`Lỗi khi xóa chứng từ: ${data.error}`);
+      }
+    } catch {
+      alert('Không thể kết nối máy chủ để xóa chứng từ');
     }
   };
 
@@ -393,7 +463,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
         )}
       </div>
 
-      {/* 6. Section B: "Khoản chi" (Expenses) */}
+      {/* 6. Section B: "Khoản chi" (Expenses & Receipts) */}
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Khoản chi</h2>
@@ -402,53 +472,150 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           </div>
         </div>
         {financials?.expenses?.length > 0 ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Nội dung</th>
-                <th>Danh mục</th>
-                <th>Số tiền</th>
-                <th>Thời gian</th>
-                <th>Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {financials.expenses.map((e: any) => (
-                <tr key={e.id}>
-                  <td>
-                    <strong>{e.title}</strong>
-                    {e.recipient_name && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        Người nhận: {e.recipient_name}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    <span className="badge badge-neutral">
-                      {CATEGORY_LABELS[e.category] || e.category}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {financials.expenses.map((e: any) => (
+              <div
+                key={e.id}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  background: '#fff',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-main)' }}>{e.title}</h3>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                      <span className="badge badge-neutral">{CATEGORY_LABELS[e.category] || e.category}</span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{formatDateVN(e.created_at)}</span>
+                      {e.recipient_name && (
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Người nhận: <strong>{e.recipient_name}</strong></span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--expense)' }}>
+                      -{formatVND(e.amount)}
+                    </div>
+                    <div>
+                      {e.needs_review ? (
+                        <span className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: '4px' }}>Cần bổ sung thông tin</span>
+                      ) : (
+                        <span className="badge badge-success" style={{ fontSize: '0.75rem', marginTop: '4px' }}>✓ Đã phân loại</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-section: Chứng từ / Hóa đơn */}
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <strong style={{ fontSize: '0.9rem' }}>Chứng từ / Hóa đơn:</strong>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Chứng từ này sẽ được hiển thị công khai.
                     </span>
-                  </td>
-                  <td style={{ fontWeight: 700, color: 'var(--expense)' }}>
-                    -{formatVND(e.amount)}
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {formatDateVN(e.created_at)}
-                  </td>
-                  <td>
-                    {e.needs_review ? (
-                      <span className="badge badge-warning" style={{ fontSize: '0.8rem' }}>
-                        Cần bổ sung thông tin
-                      </span>
-                    ) : (
-                      <span className="badge badge-success" style={{ fontSize: '0.8rem' }}>
-                        ✓ Đã phân loại
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+
+                  {/* Upload message feedback */}
+                  {uploadMessage && uploadMessage.id === e.id && (
+                    <div
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.85rem',
+                        marginBottom: '10px',
+                        background: uploadMessage.type === 'success' ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)',
+                        color: uploadMessage.type === 'success' ? '#2e7d32' : '#d32f2f',
+                      }}
+                    >
+                      {uploadMessage.text}
+                    </div>
+                  )}
+
+                  {/* Existing attachments list */}
+                  {e.attachments && e.attachments.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                      {e.attachments.map((att: any) => {
+                        const isPdf = att.mime_type === 'application/pdf';
+                        const fileUrl = `/api/v1/public/attachments/${att.id}`;
+                        return (
+                          <div
+                            key={att.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '6px 10px',
+                              background: 'var(--bg-card)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: '0.85rem',
+                            }}
+                          >
+                            {isPdf ? (
+                              <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'var(--primary)' }}>
+                                📄 {att.original_name}
+                              </a>
+                            ) : (
+                              <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--text-main)' }}>
+                                <img
+                                  src={fileUrl}
+                                  alt={att.original_name}
+                                  style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '3px' }}
+                                />
+                                <span>{att.original_name}</span>
+                              </a>
+                            )}
+                            <button
+                              className="btn btn-danger"
+                              style={{ padding: '2px 6px', fontSize: '0.75rem', marginLeft: '4px' }}
+                              title="Xóa chứng từ này"
+                              onClick={() => handleDeleteReceipt(att.id, att.original_name)}
+                            >
+                              ✕ Xóa
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                      Chưa có chứng từ nào được tải lên cho khoản chi này.
+                    </div>
+                  )}
+
+                  {/* Upload Controls */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <input
+                      type="file"
+                      ref={(el) => (fileInputRefs.current[e.id] = el)}
+                      accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+                      multiple
+                      style={{ display: 'none' }}
+                      id={`file-upload-${e.id}`}
+                      onChange={(ev) => handleUploadReceipts(e.id, ev.target.files)}
+                      disabled={uploadingExpenseId === e.id}
+                    />
+                    <label
+                      htmlFor={`file-upload-${e.id}`}
+                      className="btn btn-outline"
+                      style={{
+                        cursor: uploadingExpenseId === e.id ? 'not-allowed' : 'pointer',
+                        fontSize: '0.85rem',
+                        padding: '6px 12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      {uploadingExpenseId === e.id ? '⏳ Đang tải lên...' : '📤 Tải lên chứng từ / hóa đơn (JPG, PNG, WebP, PDF)'}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
             Chưa có khoản chi nào được ghi nhận.

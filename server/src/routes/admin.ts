@@ -539,18 +539,44 @@ export async function adminRoutes(
         e.recipient_name,
         e.created_at,
         e.classification_source,
-        CASE WHEN e.category = 'UNKNOWN' OR e.vietnamese_title IS NULL THEN 1 ELSE 0 END as needs_review,
-        (SELECT COUNT(*) FROM attachments WHERE expense_id = e.id) as attachment_count
+        CASE WHEN e.category = 'UNKNOWN' OR e.vietnamese_title IS NULL THEN 1 ELSE 0 END as needs_review
       FROM expenses e
       ORDER BY e.created_at DESC
-    `).all();
+    `).all() as any[];
+
+    const allAttachments = db.prepare(`
+      SELECT id, expense_id, file_name, original_name, mime_type, file_size, created_at
+      FROM attachments
+      ORDER BY created_at ASC
+    `).all() as any[];
+
+    const attachmentsByExpense = new Map<string, any[]>();
+    for (const att of allAttachments) {
+      if (!attachmentsByExpense.has(att.expense_id)) {
+        attachmentsByExpense.set(att.expense_id, []);
+      }
+      attachmentsByExpense.get(att.expense_id)!.push({
+        id: att.id,
+        expense_id: att.expense_id,
+        original_name: att.original_name,
+        mime_type: att.mime_type,
+        file_size: att.file_size,
+        created_at: att.created_at,
+      });
+    }
+
+    const expensesWithAttachments = expenses.map((e) => ({
+      ...e,
+      attachment_count: (attachmentsByExpense.get(e.id) || []).length,
+      attachments: attachmentsByExpense.get(e.id) || [],
+    }));
 
     return {
       totalIncome,
       totalExpense,
       balance,
       contributions,
-      expenses,
+      expenses: expensesWithAttachments,
     };
   });
 }

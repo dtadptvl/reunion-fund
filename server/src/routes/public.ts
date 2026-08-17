@@ -353,14 +353,42 @@ export async function publicRoutes(
           COALESCE(e.vietnamese_title, e.title, 'Chưa rõ mục đích') as title,
           e.recipient_name,
           e.created_at,
-          e.notes,
-          (SELECT COUNT(*) FROM attachments WHERE expense_id = e.id) as attachment_count
+          e.notes
         FROM expenses e
         ORDER BY e.created_at DESC
       `)
-      .all();
+      .all() as any[];
 
-    return { expenses };
+    const allAttachments = db
+      .prepare(`
+        SELECT id, expense_id, file_name, original_name, mime_type, file_size, created_at
+        FROM attachments
+        ORDER BY created_at ASC
+      `)
+      .all() as any[];
+
+    const attachmentsByExpense = new Map<string, any[]>();
+    for (const att of allAttachments) {
+      if (!attachmentsByExpense.has(att.expense_id)) {
+        attachmentsByExpense.set(att.expense_id, []);
+      }
+      attachmentsByExpense.get(att.expense_id)!.push({
+        id: att.id,
+        expense_id: att.expense_id,
+        original_name: att.original_name,
+        mime_type: att.mime_type,
+        file_size: att.file_size,
+        created_at: att.created_at,
+      });
+    }
+
+    const expensesWithAttachments = expenses.map((e) => ({
+      ...e,
+      attachment_count: (attachmentsByExpense.get(e.id) || []).length,
+      attachments: attachmentsByExpense.get(e.id) || [],
+    }));
+
+    return { expenses: expensesWithAttachments };
   });
 
   // 7.1 Public Settlement Summary & Financial Totals
