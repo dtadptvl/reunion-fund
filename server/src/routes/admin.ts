@@ -7,6 +7,7 @@ import { AuditService } from '../services/audit.service.js';
 import { AttachmentService } from '../services/attachment.service.js';
 import { ActivityService } from '../services/activity.service.js';
 import { VotingService } from '../services/voting.service.js';
+import { LotteryService } from '../services/lottery.service.js';
 import { ExpenseCategory } from '../db/schema.js';
 import { config } from '../config/env.js';
 
@@ -34,11 +35,13 @@ export async function adminRoutes(
     attachmentService: AttachmentService;
     activityService?: ActivityService;
     votingService?: VotingService;
+    lotteryService?: LotteryService;
   }
 ) {
   const db = options.db;
   const activityService = options.activityService || new ActivityService(db);
   const votingService = options.votingService || new VotingService(db);
+  const lotteryService = options.lotteryService || new LotteryService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -723,6 +726,26 @@ export async function adminRoutes(
   // 17. Admin Award Presentation Data (TV/Projector Mode)
   app.get('/api/v1/admin/voting/presentation', { preHandler: [requireAdmin] }, async () => {
     return votingService.getPresentationData();
+  });
+
+  // 18. Admin Trigger Lucky Wheel Draw
+  app.post('/api/v1/admin/lottery/draw', { preHandler: [requireAdmin] }, async (request, reply) => {
+    const user = (request as any).user;
+    const body = request.body as { prizeId?: string };
+
+    if (!body || !body.prizeId) {
+      return reply.status(400).send({ error: 'Vui lòng chỉ định hạng mục giải thưởng cần quay.' });
+    }
+
+    try {
+      const draw = lotteryService.triggerDraw(body.prizeId, user.username);
+      return {
+        success: true,
+        draw,
+      };
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể thực hiện quay thưởng.' });
+    }
   });
 }
 

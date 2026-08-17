@@ -34,6 +34,11 @@ export async function publicRoutes(
     return activityService.getPublicActivitySummaries();
   });
 
+  // 0.1 Public Lucky Wheel State
+  app.get('/api/v1/public/lottery/wheel-state', async () => {
+    return lotteryService.getPublicWheelState();
+  });
+
   // 1. Overview Financial Totals & Recent Activity
   app.get('/api/v1/public/overview', async () => {
     const incomeRow = db

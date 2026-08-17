@@ -6,6 +6,7 @@ interface AdminDashboardProps {
   onLogout: () => void;
   onGoToVotingResults?: () => void;
   onGoToPresentation?: () => void;
+  onGoToLuckyWheel?: () => void;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -34,6 +35,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
   onLogout,
   onGoToVotingResults,
   onGoToPresentation,
+  onGoToLuckyWheel,
 }) => {
   const [exceptions, setExceptions] = useState<any>(null);
   const [financials, setFinancials] = useState<any>(null);
@@ -327,6 +329,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
             {onGoToPresentation && (
               <button className="btn btn-primary" onClick={onGoToPresentation} style={{ background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', color: '#000000', fontWeight: 800, border: 'none' }}>
                 🎬 Trình chiếu trao giải
+              </button>
+            )}
+            {onGoToLuckyWheel && (
+              <button className="btn btn-outline" onClick={onGoToLuckyWheel} style={{ borderColor: '#ec4899', color: '#be185d', fontWeight: 700 }}>
+                🎡 Quản lý quay số
               </button>
             )}
             <button className="btn btn-primary" onClick={handleSyncSePay} disabled={syncing}>

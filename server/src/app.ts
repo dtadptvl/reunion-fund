@@ -185,6 +185,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     attachmentService,
     activityService,
     votingService,
+    lotteryService,
   });
 
   // Serve static client bundle if available
