@@ -6,12 +6,20 @@ import { SePayProvider } from './providers/bank-sync/sepay-provider.js';
 import { MockBankSyncProvider } from './providers/bank-sync/mock-provider.js';
 import { ContributionService } from './services/contribution.service.js';
 import { ExpenseService } from './services/expense.service.js';
+import { MemberService } from './services/member.service.js';
 import { ReconciliationService } from './services/reconciliation.service.js';
 import { GeminiAIProvider } from './providers/ai/gemini-provider.js';
 import { MockAIProvider } from './providers/ai/mock-ai-provider.js';
 
 async function bootstrap() {
   const db = getDatabase();
+
+  // Seed canonical roster (40 members) if database is freshly initialized
+  const memberService = new MemberService(db);
+  const seeded = memberService.seedCanonicalRoster();
+  if (seeded > 0) {
+    console.log(`[Startup] Seeded ${seeded} canonical class members into database.`);
+  }
 
   const app = buildApp({ db });
 

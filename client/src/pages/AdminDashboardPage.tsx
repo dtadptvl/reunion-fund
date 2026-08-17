@@ -106,11 +106,85 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
             <div className="stat-value warning">{exceptions.expensesNeedingReviewCount}</div>
           </div>
           <div className="stat-box">
+            <div className="stat-label">Yêu cầu sửa tên</div>
+            <div className="stat-value">{exceptions.pendingCorrectionsCount || 0}</div>
+          </div>
+          <div className="stat-box">
             <div className="stat-label">Tên cần chuẩn hóa</div>
             <div className="stat-value">{exceptions.pendingNamesCount}</div>
           </div>
         </div>
       </div>
+
+      {/* Section 0: Name Correction Requests */}
+      {exceptions.pendingCorrections?.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h2 className="card-title">Yêu cầu sửa tên thành viên lớp</h2>
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Tên hiện tại</th>
+                <th>Tên yêu cầu sửa</th>
+                <th>Ghi chú</th>
+                <th>Thời gian</th>
+                <th style={{ textAlign: 'right' }}>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {exceptions.pendingCorrections.map((item: any) => (
+                <tr key={item.id}>
+                  <td>
+                    <strong>{item.current_name}</strong>
+                  </td>
+                  <td style={{ color: 'var(--primary)', fontWeight: 600 }}>
+                    {item.requested_name}
+                  </td>
+                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {item.notes || 'Không có ghi chú'}
+                  </td>
+                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {formatDateVN(item.created_at)}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                      <button
+                        className="btn btn-primary"
+                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                        onClick={async () => {
+                          await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'APPROVE' }),
+                          });
+                          loadData();
+                        }}
+                      >
+                        ✓ Duyệt
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                        onClick={async () => {
+                          await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'REJECT' }),
+                          });
+                          loadData();
+                        }}
+                      >
+                        ✕ Từ chối
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Section 1: Unresolved Incoming Transactions */}
       {exceptions.unresolvedIncome?.length > 0 && (

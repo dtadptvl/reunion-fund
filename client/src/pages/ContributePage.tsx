@@ -17,12 +17,23 @@ export const ContributePage: React.FC = () => {
   const [isPaid, setIsPaid] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Name correction modal state
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctingName, setCorrectingName] = useState('');
+  const [correctionNotes, setCorrectionNotes] = useState('');
+  const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState('');
+  const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
+
   // Fetch roster
-  useEffect(() => {
+  const loadMembers = () => {
     fetch('/api/v1/public/members')
       .then((res) => res.json())
       .then((data) => setMembers(data.members || []))
       .catch((err) => console.error(err));
+  };
+
+  useEffect(() => {
+    loadMembers();
   }, []);
 
   // Poll for payment confirmation once intent created
@@ -83,8 +94,41 @@ export const ContributePage: React.FC = () => {
     }
   };
 
+  const handleSendNameCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMemberId || !correctingName.trim()) return;
+
+    setCorrectionSubmitting(true);
+    try {
+      const res = await fetch(`/api/v1/public/members/${selectedMemberId}/correction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestedName: correctingName.trim(),
+          notes: correctionNotes.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCorrectionSuccessMsg(
+          data.message || 'Đã gửi yêu cầu sửa tên. Thủ quỹ sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.'
+        );
+      } else {
+        alert(data.error || 'Có lỗi xảy ra khi gửi yêu cầu');
+      }
+    } catch (err) {
+      alert('Không thể kết nối máy chủ');
+    } finally {
+      setCorrectionSubmitting(false);
+    }
+  };
+
+  const selectedMember = members.find((m) => m.id === selectedMemberId);
+
   const filteredMembers = members.filter((m) =>
-    m.full_name.toLowerCase().includes(searchQuery.toLowerCase())
+    (m.full_name + (m.disambiguator ? ` (${m.disambiguator})` : ''))
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -112,7 +156,7 @@ export const ContributePage: React.FC = () => {
                 <div>
                   <input
                     type="text"
-                    placeholder="Tìm tên trong danh sách lớp..."
+                    placeholder="Tìm tên trong danh sách 40 thành viên..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     style={{
@@ -125,39 +169,74 @@ export const ContributePage: React.FC = () => {
                   />
                   <select
                     value={selectedMemberId}
-                    onChange={(e) => setSelectedMemberId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedMemberId(e.target.value);
+                      setCorrectionSuccessMsg('');
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid var(--border-color)',
-                      marginBottom: '10px',
+                      marginBottom: '8px',
                     }}
                   >
                     <option value="">-- Chọn thành viên lớp --</option>
                     {filteredMembers.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.full_name}
+                        {m.full_name} {m.disambiguator ? `(${m.disambiguator})` : ''}
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomName(true);
-                      setSelectedMemberId('');
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--primary)',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    + Không có tên trong danh sách lớp
-                  </button>
+
+                  {/* Name correction link when member selected */}
+                  {selectedMemberId && selectedMember && (
+                    <div style={{ marginBottom: '12px' }}>
+                      {correctionSuccessMsg ? (
+                        <div style={{ padding: '10px', background: 'var(--primary-bg)', color: 'var(--primary-text)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                          ✓ {correctionSuccessMsg}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCorrectingName(selectedMember.full_name + (selectedMember.disambiguator ? ` (${selectedMember.disambiguator})` : ''));
+                            setShowCorrectionModal(true);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Tên của bạn bị sai? Nhấn vào đây để sửa
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomName(true);
+                        setSelectedMemberId('');
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--primary)',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      + Không có tên trong danh sách lớp
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div>
@@ -315,6 +394,81 @@ export const ContributePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal: Yêu cầu sửa tên */}
+      {showCorrectionModal && selectedMember && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
+          <div className="card" style={{ maxWidth: '460px', width: '100%' }}>
+            <div className="card-header">
+              <h2 className="card-title">Yêu cầu sửa tên thành viên</h2>
+              <button
+                onClick={() => setShowCorrectionModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSendNameCorrection}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Tên hiện tại
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={selectedMember.full_name + (selectedMember.disambiguator ? ` (${selectedMember.disambiguator})` : '')}
+                  style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-card-subtle)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                  Tên đúng của bạn
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={correctingName}
+                  onChange={(e) => setCorrectingName(e.target.value)}
+                  placeholder="Nhập tên chính xác của bạn..."
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Ghi chú thêm (không bắt buộc)
+                </label>
+                <input
+                  type="text"
+                  value={correctionNotes}
+                  onChange={(e) => setCorrectionNotes(e.target.value)}
+                  placeholder="Ví dụ: Tên bị sai dấu, thiếu chữ lót..."
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setShowCorrectionModal(false)}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={correctionSubmitting}
+                >
+                  {correctionSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu sửa tên'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

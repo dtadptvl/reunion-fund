@@ -37,6 +37,7 @@ RUN npm ci --omit=dev
 # Copy compiled backend and frontend
 COPY --from=server-builder /app/server/dist ./server/dist
 COPY --from=server-builder /app/server/src/db/migrations ./server/dist/db/migrations
+COPY --from=server-builder /app/server/src/db/seeds ./server/dist/db/seeds
 COPY --from=client-builder /app/client/dist ./client/dist
 
 # Storage Volumes for persistent database and uploads

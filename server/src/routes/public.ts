@@ -88,8 +88,33 @@ export async function publicRoutes(
   // 2. Member Roster Search
   app.get('/api/v1/public/members', async (request) => {
     const { q } = request.query as { q?: string };
-    const members = options.memberService.searchMembers(q || '', 50);
+    const members = options.memberService.searchMembers(q || '', 100);
     return { members };
+  });
+
+  // 2.1 Public Name Correction Request
+  app.post('/api/v1/public/members/:id/correction', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { requestedName, notes } = request.body as { requestedName?: string; notes?: string };
+
+    if (!requestedName || !requestedName.trim()) {
+      return reply.status(400).send({ error: 'Vui lòng nhập tên đúng của bạn' });
+    }
+
+    try {
+      const reqRow = options.memberService.createNameCorrectionRequest(
+        id,
+        requestedName.trim(),
+        notes
+      );
+      return {
+        success: true,
+        requestId: reqRow.id,
+        message: 'Đã gửi yêu cầu sửa tên. Thủ quỹ sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.',
+      };
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể tạo yêu cầu sửa tên' });
+    }
   });
 
   // 3. Create Payment Intent & VietQR

@@ -109,7 +109,18 @@ export async function adminRoutes(
       `)
       .all();
 
-    // D. Reconciliation stats
+    // D. Name correction requests pending review
+    const pendingCorrections = db
+      .prepare(`
+        SELECT r.id, r.member_id, r.current_name, r.requested_name, r.notes, r.created_at, m.full_name
+        FROM name_correction_requests r
+        JOIN members m ON r.member_id = m.id
+        WHERE r.status = 'PENDING'
+        ORDER BY r.created_at DESC
+      `)
+      .all();
+
+    // E. Reconciliation stats
     const lastReconciliation = db
       .prepare('SELECT * FROM reconciliation_runs ORDER BY started_at DESC LIMIT 1')
       .get();
@@ -121,8 +132,37 @@ export async function adminRoutes(
       expensesNeedingReview,
       pendingNamesCount: pendingNames.length,
       pendingNames,
+      pendingCorrectionsCount: pendingCorrections.length,
+      pendingCorrections,
       lastReconciliation,
     };
+  });
+
+  // 4.1 Review Name Correction Request (Approve / Reject)
+  app.post('/api/v1/admin/name-corrections/:id/review', { preHandler: [requireAuth] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { action } = request.body as { action: 'APPROVE' | 'REJECT' };
+    const user = (request as any).user;
+
+    if (action !== 'APPROVE' && action !== 'REJECT') {
+      return reply.status(400).send({ error: 'Hành động không hợp lệ (APPROVE hoặc REJECT)' });
+    }
+
+    try {
+      const result = options.memberService.reviewNameCorrectionRequest(id, action, user.username);
+      options.auditService.log({
+        actor: user.username,
+        action: action === 'APPROVE' ? 'APPROVE_NAME_CORRECTION' : 'REJECT_NAME_CORRECTION',
+        entityType: 'NAME_CORRECTION_REQUEST',
+        entityId: id,
+        afterState: result,
+        ipAddress: request.ip,
+      });
+
+      return result;
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Lỗi xử lý yêu cầu sửa tên' });
+    }
   });
 
   // 5. Assign Unresolved Contribution

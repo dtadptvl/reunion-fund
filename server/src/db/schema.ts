@@ -9,11 +9,26 @@ export interface MemberRow {
   full_name: string;
   normalized_name: string;
   bank_display_name: string;
+  disambiguator?: string | null;
   phone?: string | null;
   email?: string | null;
   notes?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type NameCorrectionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface NameCorrectionRequestRow {
+  id: string;
+  member_id: string;
+  current_name: string;
+  requested_name: string;
+  notes?: string | null;
+  status: NameCorrectionStatus;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
 }
 
 export type ExternalContributorStatus =
