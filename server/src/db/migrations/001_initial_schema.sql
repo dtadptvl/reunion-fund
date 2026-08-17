@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     recipient_account TEXT,
     recipient_bank TEXT,
     amount INTEGER NOT NULL,
-    classification_source TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK(classification_source IN ('MANUAL_OVERRIDE', 'LEARNED_RULE', 'DETERMINISTIC_RULE', 'GEMINI_AI', 'UNKNOWN')),
+    classification_source TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK(classification_source IN ('MANUAL_OVERRIDE', 'LEARNED_RULE', 'DETERMINISTIC_RULE', 'GEMINI_AI', 'MOCK_AI', 'UNKNOWN')),
     ai_confidence REAL,
     is_settlement_transfer INTEGER NOT NULL DEFAULT 0 CHECK(is_settlement_transfer IN (0, 1)),
     notes TEXT,

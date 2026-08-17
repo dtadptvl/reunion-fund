@@ -414,7 +414,7 @@ describe('T1–T17 Comprehensive Functional Acceptance Matrix', () => {
     insertBankTx(clearTx);
     const clearExpense = await expenseService.processOutgoingTransaction(clearTx);
     expect(clearExpense.category).toBe('FOOD');
-    expect(clearExpense.classification_source).toBe('GEMINI_AI');
+    expect(clearExpense.classification_source).toBe('MOCK_AI');
     expect(clearExpense.ai_confidence).toBeGreaterThanOrEqual(0.8);
 
     // 3. Manual Treasurer classification overrides and is preserved

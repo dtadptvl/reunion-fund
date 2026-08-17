@@ -67,7 +67,7 @@ export class ExpenseService {
         if (aiResult && aiResult.category !== 'UNKNOWN') {
           category = aiResult.category;
           title = aiResult.title;
-          classificationSource = 'GEMINI_AI';
+          classificationSource = this.aiProvider.source || 'GEMINI_AI';
           confidence = aiResult.confidence;
         }
       } catch (err) {

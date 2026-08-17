@@ -1,7 +1,10 @@
 import { AIProvider, AIClassificationResult } from './types.js';
+import { ClassificationSource } from '../../db/schema.js';
 import { removeVietnameseDiacritics } from '../../services/vietqr.service.js';
 
 export class MockAIProvider implements AIProvider {
+  readonly source: ClassificationSource = 'MOCK_AI';
+
   async classifyExpense(
     description: string,
     _recipient?: string | null,

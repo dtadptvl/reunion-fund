@@ -128,6 +128,7 @@ export type ClassificationSource =
   | 'LEARNED_RULE'
   | 'DETERMINISTIC_RULE'
   | 'GEMINI_AI'
+  | 'MOCK_AI'
   | 'UNKNOWN';
 
 export interface ExpenseRow {

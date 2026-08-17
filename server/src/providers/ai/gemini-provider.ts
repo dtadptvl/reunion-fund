@@ -1,8 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 import { AIProvider, AIClassificationResult } from './types.js';
-import { ExpenseCategory } from '../../db/schema.js';
+import { ExpenseCategory, ClassificationSource } from '../../db/schema.js';
 
 export class GeminiAIProvider implements AIProvider {
+  readonly source: ClassificationSource = 'GEMINI_AI';
   private ai: GoogleGenAI | null = null;
   private modelName: string;
 

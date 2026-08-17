@@ -1,4 +1,4 @@
-import { ExpenseCategory } from '../../db/schema.js';
+import { ExpenseCategory, ClassificationSource } from '../../db/schema.js';
 
 export interface AIClassificationResult {
   title: string | null;
@@ -7,5 +7,6 @@ export interface AIClassificationResult {
 }
 
 export interface AIProvider {
+  readonly source: ClassificationSource;
   classifyExpense(description: string, recipient?: string | null, amount?: number): Promise<AIClassificationResult>;
 }
