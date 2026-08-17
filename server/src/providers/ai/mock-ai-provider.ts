@@ -1,4 +1,5 @@
 import { AIProvider, AIClassificationResult } from './types.js';
+import { removeVietnameseDiacritics } from '../../services/vietqr.service.js';
 
 export class MockAIProvider implements AIProvider {
   async classifyExpense(
@@ -6,7 +7,7 @@ export class MockAIProvider implements AIProvider {
     _recipient?: string | null,
     _amount?: number
   ): Promise<AIClassificationResult> {
-    const desc = description.toUpperCase();
+    const desc = removeVietnameseDiacritics(description).toUpperCase();
     if (desc.includes('DAT COC') || desc.includes('NHA HANG') || desc.includes('BUFFET') || desc.includes('TIEC')) {
       return { title: 'Đặt cọc nhà hàng', category: 'FOOD', confidence: 0.95 };
     }

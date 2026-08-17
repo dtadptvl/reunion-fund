@@ -32,7 +32,7 @@ export class ExpenseService {
       return existing;
     }
 
-    const description = bankTx.description || bankTx.content || '';
+    const description = `${bankTx.content || ''} ${bankTx.description || ''}`.trim();
     const normalizedDesc = removeVietnameseDiacritics(description);
 
     let category: ExpenseCategory = 'UNKNOWN';
