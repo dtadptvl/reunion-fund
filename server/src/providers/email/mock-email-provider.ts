@@ -56,6 +56,8 @@ export class MockEmailProvider implements EmailProvider {
       timestamp: new Date().toISOString(),
     });
 
+    console.log(`[MockEmailProvider] Sent verification email to ${payload.to}: OTP Code = ${payload.code}, Token = ${payload.token}`);
+
     return true;
   }
 

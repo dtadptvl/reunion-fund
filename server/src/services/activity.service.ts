@@ -54,8 +54,9 @@ export class ActivityService {
     // Audit log
     this.db
       .prepare(
-        `INSERT INTO audit_logs (id, actor, action, target_type, target_id, details)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO audit_logs (
+          id, actor, action, entity_type, entity_id, before_state, after_state, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
       )
       .run(
         crypto.randomUUID(),
@@ -63,6 +64,7 @@ export class ActivityService {
         locked ? 'LOCK_ACTIVITY_RSVP' : 'UNLOCK_ACTIVITY_RSVP',
         'SYSTEM_STATE',
         'is_rsvp_locked',
+        JSON.stringify({ isLocked: !locked }),
         JSON.stringify({ isLocked: locked, timestamp: new Date().toISOString() })
       );
 
@@ -199,8 +201,9 @@ export class ActivityService {
       // Audit log
       this.db
         .prepare(
-          `INSERT INTO audit_logs (id, actor, action, target_type, target_id, details)
-           VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO audit_logs (
+            id, actor, action, entity_type, entity_id, before_state, after_state, timestamp
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
         )
         .run(
           crypto.randomUUID(),
@@ -208,7 +211,8 @@ export class ActivityService {
           'SAVE_ACTIVITY_RSVP',
           'MEMBER',
           memberId,
-          JSON.stringify({ rsvpsCount: rsvps.length, timestamp: now })
+          null,
+          JSON.stringify({ rsvpsCount: rsvps.length, rsvps, timestamp: now })
         );
     });
 

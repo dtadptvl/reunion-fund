@@ -237,5 +237,24 @@ describe('V2 Phase 2 — Reunion Invitation & Activity RSVP', () => {
     const finalPubRes = await supertest(app.server).get('/api/v1/public/activities');
     const finalAnUong = finalPubRes.body.activities.find((a: any) => a.id === 'an-uong');
     expect(finalAnUong.total_participants).toBe(4);
+
+    // 11. Verify audit logs recorded correctly in canonical audit_logs table
+    const auditLogs = db.prepare('SELECT * FROM audit_logs ORDER BY timestamp ASC').all() as any[];
+    const rsvpLogs = auditLogs.filter((l) => l.action === 'SAVE_ACTIVITY_RSVP');
+    const lockLogs = auditLogs.filter((l) => l.action === 'LOCK_ACTIVITY_RSVP');
+    const unlockLogs = auditLogs.filter((l) => l.action === 'UNLOCK_ACTIVITY_RSVP');
+
+    expect(rsvpLogs.length).toBeGreaterThanOrEqual(2);
+    expect(rsvpLogs[0].actor).toBe('bich_a1');
+    expect(rsvpLogs[0].entity_type).toBe('MEMBER');
+    expect(rsvpLogs[0].entity_id).toBe(bich.id);
+
+    expect(lockLogs).toHaveLength(1);
+    expect(lockLogs[0].actor).toBe('tuananh_admin');
+    expect(lockLogs[0].entity_type).toBe('SYSTEM_STATE');
+    expect(lockLogs[0].entity_id).toBe('is_rsvp_locked');
+
+    expect(unlockLogs).toHaveLength(1);
+    expect(unlockLogs[0].actor).toBe('tuananh_admin');
   });
 });
