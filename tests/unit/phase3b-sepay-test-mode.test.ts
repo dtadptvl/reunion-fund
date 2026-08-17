@@ -87,17 +87,22 @@ describe('Phase 3B — SePay Test Mode Verification Suite', () => {
 
   // 1. Webhook Signature & Idempotency
   describe('1. Webhook HMAC & Idempotency', () => {
-    it('accepts valid HMAC-SHA256 signature', () => {
+    it('accepts valid HMAC-SHA256 signature with X-SePay-Timestamp', () => {
       const payload = JSON.stringify({ id: 1001, transferAmount: 500000, content: 'TEST' });
-      const signature = crypto.createHmac('sha256', webhookSecret).update(payload).digest('hex');
-      const valid = sepayProvider.verifyWebhook({ 'x-sepay-signature': signature }, payload);
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const message = `${timestamp}.${payload}`;
+      const signature = crypto.createHmac('sha256', webhookSecret).update(message, 'utf8').digest('hex');
+      const valid = sepayProvider.verifyWebhook({
+        'x-sepay-timestamp': timestamp,
+        'x-sepay-signature': `sha256=${signature}`,
+      }, payload);
       expect(valid).toBe(true);
     });
 
-    it('rejects invalid HMAC-SHA256 signature', () => {
+    it('rejects invalid HMAC-SHA256 signature or missing timestamp', () => {
       const payload = JSON.stringify({ id: 1001, transferAmount: 500000, content: 'TEST' });
-      const valid = sepayProvider.verifyWebhook({ 'x-sepay-signature': 'invalid_signature_hex' }, payload);
-      expect(valid).toBe(false);
+      const validWithoutTs = sepayProvider.verifyWebhook({ 'x-sepay-signature': '0000000000000000000000000000000000000000000000000000000000000000' }, payload);
+      expect(validWithoutTs).toBe(false);
     });
 
     it('enforces idempotency via UNIQUE constraint on sepay_id', async () => {

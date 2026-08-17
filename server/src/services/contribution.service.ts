@@ -46,9 +46,9 @@ export class ContributionService {
         };
       }
 
-      // 2. Parse transfer content
+      // 2. Parse transfer content (strictly from NAPAS memo content)
       const { extractedCode, hasDongQuyToken, normalizedContent } = parseTransferContent(
-        bankTx.content || bankTx.description || ''
+        bankTx.content || ''
       );
 
       let matchedIntent: PaymentIntentRow | undefined;

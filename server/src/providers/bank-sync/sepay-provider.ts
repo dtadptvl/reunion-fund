@@ -19,44 +19,82 @@ export class SePayProvider implements BankSyncProvider {
   }
 
   /**
-   * Verifies incoming webhook request using HMAC-SHA256 signature or API Key header.
+   * Verifies incoming webhook request against the official SePay HMAC-SHA256 specification.
+   *
+   * Algorithm:
+   * message = `${X-SePay-Timestamp}.${raw_request_body}`
+   * expected signature: sha256=<HMAC-SHA256 hex digest using SEPAY_WEBHOOK_SECRET>
+   *
+   * Enforces:
+   * - Required X-SePay-Timestamp header
+   * - Strict replay window (±300 seconds / 5 minutes)
+   * - Valid 64-character hex signature format (optional 'sha256=' prefix)
+   * - Constant-time signature comparison (crypto.timingSafeEqual)
+   * - Rejection of missing/invalid timestamp, expired requests, malformed signatures, or modified payloads
    */
   verifyWebhook(headers: Record<string, string | string[] | undefined>, rawBody: string): boolean {
-    // 1. Check HMAC Signature header
-    const signatureHeader =
+    if (!this.webhookSecret || !rawBody) {
+      return false;
+    }
+
+    // 1. Extract and validate timestamp header
+    const rawTimestamp =
+      headers['x-sepay-timestamp'] ||
+      headers['X-SePay-Timestamp'] ||
+      headers['x-timestamp'] ||
+      headers['X-Timestamp'];
+
+    if (!rawTimestamp || typeof rawTimestamp !== 'string') {
+      return false;
+    }
+
+    const timestampNum = Number(rawTimestamp.trim());
+    if (isNaN(timestampNum) || !isFinite(timestampNum) || timestampNum <= 0) {
+      return false;
+    }
+
+    // Determine timestamp in seconds (handles either Unix seconds or milliseconds)
+    const timestampSec = timestampNum > 1e11 ? Math.floor(timestampNum / 1000) : Math.floor(timestampNum);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const REPLAY_WINDOW_SECONDS = 300; // ±5 minutes
+
+    if (Math.abs(nowSec - timestampSec) > REPLAY_WINDOW_SECONDS) {
+      return false;
+    }
+
+    // 2. Extract and validate signature header
+    const rawSignature =
       headers['x-sepay-signature'] ||
+      headers['X-SePay-Signature'] ||
       headers['x-signature'] ||
-      headers['X-SePay-Signature'];
+      headers['X-Signature'];
 
-    if (signatureHeader && typeof signatureHeader === 'string') {
-      const computedHash = crypto
-        .createHmac('sha256', this.webhookSecret)
-        .update(rawBody)
-        .digest('hex');
-
-      const expectedBuffer = Buffer.from(computedHash, 'hex');
-      const signatureBuffer = Buffer.from(signatureHeader.replace(/^sha256=/i, ''), 'hex');
-
-      if (expectedBuffer.length === signatureBuffer.length) {
-        return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
-      }
+    if (!rawSignature || typeof rawSignature !== 'string') {
+      return false;
     }
 
-    // 2. Check Authorization / Apikey header fallback
-    const authHeader = headers['authorization'] || headers['Authorization'];
-    if (authHeader && typeof authHeader === 'string') {
-      const match = authHeader.match(/^Apikey\s+(.+)$/i);
-      if (match && match[1]) {
-        const apiKey = match[1].trim();
-        const expectedBuffer = Buffer.from(this.webhookSecret);
-        const receivedBuffer = Buffer.from(apiKey);
-        if (expectedBuffer.length === receivedBuffer.length) {
-          return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
-        }
-      }
+    // Signature format may be "sha256=<hex>" or "<hex>"
+    const hexSignature = rawSignature.replace(/^sha256=/i, '').trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(hexSignature)) {
+      return false;
     }
 
-    return false;
+    // 3. Construct signature payload: `${X-SePay-Timestamp}.${raw_request_body}`
+    const message = `${rawTimestamp.trim()}.${rawBody}`;
+
+    const computedHash = crypto
+      .createHmac('sha256', this.webhookSecret)
+      .update(message, 'utf8')
+      .digest('hex');
+
+    const expectedBuffer = Buffer.from(computedHash, 'hex');
+    const receivedBuffer = Buffer.from(hexSignature, 'hex');
+
+    if (expectedBuffer.length !== receivedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
   }
 
   normalizeWebhookTransaction(payload: any): NormalizedBankTransaction {

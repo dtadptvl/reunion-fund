@@ -19,12 +19,14 @@ export async function webhookRoutes(
   app.post(
     '/api/v1/webhook/sepay',
     async (request, reply) => {
-      const rawBody = JSON.stringify(request.body || {});
+      const rawBody =
+        (request as any).rawBody ??
+        (typeof request.body === 'string' ? request.body : JSON.stringify(request.body || {}));
       const headers = request.headers;
 
-      // 1. Verify Webhook Signature (HMAC / Apikey)
+      // 1. Verify Webhook Signature (HMAC-SHA256 with X-SePay-Timestamp)
       const isValid = options.bankSyncProvider.verifyWebhook(headers, rawBody);
-      if (!isValid && process.env.NODE_ENV === 'production') {
+      if (!isValid) {
         request.log.warn({ headers }, 'Unauthorized webhook attempt');
         return reply.status(401).send({ success: false, error: 'Unauthorized webhook signature' });
       }

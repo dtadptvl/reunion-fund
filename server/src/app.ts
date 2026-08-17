@@ -44,6 +44,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     logger: process.env.NODE_ENV !== 'test',
   });
 
+  // Preserve original raw body for cryptographic HMAC verification
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    try {
+      (req as any).rawBody = body;
+      const json = body ? JSON.parse(body as string) : {};
+      done(null, json);
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
   const db = options.db;
 
   // Providers
