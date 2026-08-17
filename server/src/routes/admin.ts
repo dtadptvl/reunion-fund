@@ -207,7 +207,7 @@ export async function adminRoutes(
   });
 
   // 6. Update Expense Details & Category
-  app.post('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, async (request, reply) => {
+  const handleUpdateExpense = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     const body = request.body as {
       vietnameseTitle?: string;
@@ -272,7 +272,9 @@ export async function adminRoutes(
     });
 
     return { success: true };
-  });
+  };
+  app.post('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, handleUpdateExpense);
+  app.put('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, handleUpdateExpense);
 
   // 7. Manual SePay Reconciliation
   app.post('/api/v1/admin/reconcile', { preHandler: [requireAuth] }, async (request, reply) => {

@@ -33,6 +33,19 @@ export class AuthService {
     }
   }
 
+  seedInitialStaff(username: string, passwordHash: string, fullName = 'Thủ Quỹ Lớp A1'): boolean {
+    const existing = this.db.prepare('SELECT id FROM staff_users WHERE username = ?').get(username);
+    if (!existing && passwordHash && !passwordHash.includes('dummy')) {
+      const id = crypto.randomUUID();
+      this.db.prepare(`
+        INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
+        VALUES (?, ?, ?, ?, 'TREASURER', CURRENT_TIMESTAMP)
+      `).run(id, username, passwordHash, fullName);
+      return true;
+    }
+    return false;
+  }
+
   async authenticate(username: string, password: string): Promise<SessionData | null> {
     const user = this.db
       .prepare('SELECT * FROM staff_users WHERE username = ?')
