@@ -83,7 +83,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     expenseService
   );
   const authService = new AuthService(db);
-  authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH);
+  authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
 
