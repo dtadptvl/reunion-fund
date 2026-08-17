@@ -7,6 +7,7 @@ import { ExportService } from '../services/export.service.js';
 import { AttachmentService } from '../services/attachment.service.js';
 import { ActivityService } from '../services/activity.service.js';
 import { LotteryService } from '../services/lottery.service.js';
+import { VotingService } from '../services/voting.service.js';
 import {
   generatePaymentCode,
   formatTransferContent,
@@ -23,15 +24,25 @@ export async function publicRoutes(
     attachmentService: AttachmentService;
     activityService?: ActivityService;
     lotteryService?: LotteryService;
+    votingService?: VotingService;
   }
 ) {
   const db = options.db;
   const activityService = options.activityService || new ActivityService(db);
   const lotteryService = options.lotteryService || new LotteryService(db);
+  const votingService = options.votingService || new VotingService(db);
 
   // 0. Public Activities & RSVPs
   app.get('/api/v1/public/activities', async () => {
     return activityService.getPublicActivitySummaries();
+  });
+
+  // 0.1 Public Candidate Vote Counts (Sanitized, Zero Voter Identities)
+  app.get('/api/v1/public/voting/counts', async () => {
+    return {
+      isLocked: votingService.isVotingLocked(),
+      categories: votingService.getPublicVoteCounts(),
+    };
   });
 
   // 1. Overview Financial Totals & Recent Activity

@@ -302,4 +302,54 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     expect(presRes.status).toBe(200);
     expect(presRes.body.awards).toHaveLength(3);
   });
+
+  it('8. Public vote counts endpoint exposes candidate counts but never leaks voter identities', async () => {
+    const members = memberService.searchMembers('', 10);
+    const voter1 = members[0];
+    const voter2 = members[1];
+    const candidateA = members[2];
+
+    // Create 2 voters
+    await authService.registerMemberAccount(voter1.id, 'pv1', 'pv1@example.com', 'pwd');
+    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('pv1@example.com')!.token);
+    const u1 = (await authService.authenticate('pv1', 'pwd')).user!;
+
+    await authService.registerMemberAccount(voter2.id, 'pv2', 'pv2@example.com', 'pwd');
+    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('pv2@example.com')!.token);
+    const u2 = (await authService.authenticate('pv2', 'pwd')).user!;
+
+    // Initial public vote count for candidateA must be 0
+    let pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
+    expect(pubRes.status).toBe(200);
+    expect(pubRes.body.categories).toHaveLength(3);
+
+    const cat1 = pubRes.body.categories.find((c: any) => c.id === 'dang-quy-nhat')!;
+    const candEntry = cat1.candidates.find((c: any) => c.member_id === candidateA.id)!;
+    expect(candEntry.vote_count).toBe(0);
+
+    // Voter 1 votes for candidateA
+    votingService.castVotes(u1.id, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv1');
+
+    // Public count updates to 1
+    pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
+    const candEntryAfter1 = pubRes.body.categories.find((c: any) => c.id === 'dang-quy-nhat')!.candidates.find((c: any) => c.member_id === candidateA.id)!;
+    expect(candEntryAfter1.vote_count).toBe(1);
+
+    // Voter 2 also votes for candidateA
+    votingService.castVotes(u2.id, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv2');
+
+    // Public count updates to 2
+    pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
+    const candEntryAfter2 = pubRes.body.categories.find((c: any) => c.id === 'dang-quy-nhat')!.candidates.find((c: any) => c.member_id === candidateA.id)!;
+    expect(candEntryAfter2.vote_count).toBe(2);
+
+    // Strict Privacy Assertion: check entire JSON response structure
+    const jsonStr = JSON.stringify(pubRes.body);
+    expect(jsonStr).not.toContain('pv1');
+    expect(jsonStr).not.toContain('pv2');
+    expect(jsonStr).not.toContain('pv1@example.com');
+    expect(jsonStr).not.toContain('voter_user_id');
+    expect(jsonStr).not.toContain('voter_member_id');
+    expect(jsonStr).not.toContain('voter_account');
+  });
 });

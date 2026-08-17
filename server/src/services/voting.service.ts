@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import { MemberRow } from '../db/schema.js';
+import { sortVietnameseMembers } from './member.service.js';
 
 export interface VotingCategoryRow {
   id: string;
@@ -9,6 +10,22 @@ export interface VotingCategoryRow {
   display_order: number;
   manual_winner_member_id: string | null;
   created_at: string;
+}
+
+export interface PublicCandidateVoteCount {
+  member_id: string;
+  full_name: string;
+  disambiguator: string | null;
+  vote_count: number;
+}
+
+export interface PublicCategoryVoteCount {
+  id: string;
+  title: string;
+  description: string | null;
+  display_order: number;
+  total_votes: number;
+  candidates: PublicCandidateVoteCount[];
 }
 
 export interface VoteRow {
@@ -406,5 +423,49 @@ export class VotingService {
     }));
 
     return { awards };
+  }
+
+  /**
+   * Publicly accessible vote counts per candidate (sanitized, zero voter identities).
+   */
+  getPublicVoteCounts(): PublicCategoryVoteCount[] {
+    const categories = this.getCategories();
+    const members = this.db.prepare('SELECT id, full_name, disambiguator FROM members').all() as MemberRow[];
+
+    return categories.map((cat) => {
+      const voteCounts = this.db
+        .prepare(`
+          SELECT candidate_member_id, COUNT(*) as vote_count
+          FROM votes
+          WHERE category_id = ?
+          GROUP BY candidate_member_id
+        `)
+        .all(cat.id) as Array<{ candidate_member_id: string; vote_count: number }>;
+
+      const countMap = new Map<string, number>();
+      let totalVotes = 0;
+      for (const vc of voteCounts) {
+        countMap.set(vc.candidate_member_id, vc.vote_count);
+        totalVotes += vc.vote_count;
+      }
+
+      const candidateList: PublicCandidateVoteCount[] = members.map((m) => ({
+        member_id: m.id,
+        full_name: m.full_name,
+        disambiguator: m.disambiguator ?? null,
+        vote_count: countMap.get(m.id) || 0,
+      }));
+
+      const sortedCandidates = sortVietnameseMembers(candidateList);
+
+      return {
+        id: cat.id,
+        title: cat.title,
+        description: cat.description,
+        display_order: cat.display_order,
+        total_votes: totalVotes,
+        candidates: sortedCandidates,
+      };
+    });
   }
 }

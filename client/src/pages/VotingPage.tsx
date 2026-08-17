@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 
-interface VotingCategory {
+interface CandidateVoteCount {
+  member_id: string;
+  full_name: string;
+  disambiguator: string | null;
+  vote_count: number;
+}
+
+interface PublicCategoryData {
   id: string;
   title: string;
   description: string | null;
   display_order: number;
-}
-
-interface Member {
-  id: string;
-  full_name: string;
-  disambiguator: string | null;
+  total_votes: number;
+  candidates: CandidateVoteCount[];
 }
 
 interface VotingPageProps {
@@ -24,38 +27,46 @@ export const VotingPage: React.FC<VotingPageProps> = ({
   onGoToLogin,
   onGoToRegister,
 }) => {
-  const [categories, setCategories] = useState<VotingCategory[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
+  const [categoriesData, setCategoriesData] = useState<PublicCategoryData[]>([]);
   const [userVotes, setUserVotes] = useState<Record<string, string>>({});
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  useEffect(() => {
-    // 1. Fetch canonical members
-    fetch('/api/v1/public/members')
-      .then((res) => res.json())
-      .then((data) => setMembers(data.members || []))
-      .catch((err) => console.error(err));
-
-    // 2. Fetch voting data if logged in
-    if (currentUser) {
-      fetch('/api/v1/auth/votes')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.categories) setCategories(data.categories);
-          if (data.userVotes) setUserVotes(data.userVotes);
-          if (typeof data.isLocked === 'boolean') setIsLocked(data.isLocked);
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.error(err);
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
+  const fetchPublicCounts = async () => {
+    try {
+      const res = await fetch('/api/v1/public/voting/counts');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.categories) setCategoriesData(data.categories);
+        if (typeof data.isLocked === 'boolean') setIsLocked(data.isLocked);
+      }
+    } catch (err) {
+      console.error(err);
     }
+  };
+
+  useEffect(() => {
+    // 1. Fetch public vote counts
+    fetchPublicCounts().finally(() => {
+      // 2. Fetch user's own votes if logged in
+      if (currentUser) {
+        fetch('/api/v1/auth/votes')
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.userVotes) setUserVotes(data.userVotes);
+            if (typeof data.isLocked === 'boolean') setIsLocked(data.isLocked);
+            setLoading(false);
+          })
+          .catch((err) => {
+            console.error(err);
+            setLoading(false);
+          });
+      } else {
+        setLoading(false);
+      }
+    });
   }, [currentUser]);
 
   const handleSelectCandidate = (categoryId: string, candidateMemberId: string) => {
@@ -98,6 +109,8 @@ export const VotingPage: React.FC<VotingPageProps> = ({
 
       setUserVotes(data.votes || userVotes);
       setMessage({ text: 'Đã lưu phiếu bình chọn của bạn thành công!', type: 'success' });
+      // Refresh public counts immediately
+      await fetchPublicCounts();
     } catch (err: any) {
       setMessage({ text: err.message || 'Lỗi khi lưu bình chọn.', type: 'error' });
     } finally {
@@ -105,7 +118,7 @@ export const VotingPage: React.FC<VotingPageProps> = ({
     }
   };
 
-  const getMemberDisplayName = (m: Member) =>
+  const getMemberDisplayName = (m: { full_name: string; disambiguator?: string | null }) =>
     `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
 
   if (loading) {
@@ -136,7 +149,7 @@ export const VotingPage: React.FC<VotingPageProps> = ({
           Bình Chọn Các Hạng Mục Danh Dự
         </h1>
         <p style={{ margin: 0, fontSize: '0.95rem', opacity: 0.9, lineHeight: 1.5 }}>
-          Mỗi thành viên lớp được bình chọn <strong>1 phiếu cho mỗi hạng mục</strong>. Bạn có thể thay đổi lựa chọn trước khi Ban Quản trị khóa cổng bình chọn.
+          Mỗi thành viên lớp được bình chọn <strong>1 phiếu cho mỗi hạng mục</strong>. Số phiếu của từng thành viên được cập nhật công khai và bảo mật tuyệt đối danh tính người bỏ phiếu.
         </p>
       </div>
 
@@ -196,13 +209,13 @@ export const VotingPage: React.FC<VotingPageProps> = ({
       )}
 
       {/* UNAUTHENTICATED CALL TO ACTION */}
-      {!currentUser ? (
+      {!currentUser && (
         <div className="card" style={{ textAlign: 'center', padding: '32px 20px' }}>
           <h2 style={{ fontSize: '1.2rem', margin: '0 0 10px 0', color: 'var(--text-main)' }}>
             Đăng nhập để tham gia bình chọn
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '20px' }}>
-            Chỉ thành viên có tài khoản liên kết với danh sách lớp A1 mới có quyền bình chọn.
+            Chỉ thành viên có tài khoản liên kết với danh sách lớp A1 mới có quyền bình chọn. Bạn vẫn có thể xem số lượng phiếu công khai bên dưới.
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={onGoToLogin}>
@@ -213,52 +226,75 @@ export const VotingPage: React.FC<VotingPageProps> = ({
             </button>
           </div>
         </div>
-      ) : (
-        /* VOTING FORM FOR LOGGED-IN USERS */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {categories.map((cat, index) => {
-            const selectedMemberId = userVotes[cat.id] || '';
-            const selectedMember = members.find((m) => m.id === selectedMemberId);
+      )}
 
-            return (
-              <div key={cat.id} className="card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                  <div>
-                    <span
-                      style={{
-                        background: 'var(--primary-light, #eff6ff)',
-                        color: 'var(--primary, #1e40af)',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        display: 'inline-block',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Hạng mục {index + 1}
-                    </span>
-                    <h2 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', color: 'var(--text-main)' }}>
-                      {cat.title}
-                    </h2>
-                    {cat.description && (
-                      <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-                        {cat.description}
-                      </p>
-                    )}
-                  </div>
+      {/* CATEGORIES & CANDIDATE VOTE COUNTS */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {categoriesData.map((cat, index) => {
+          const selectedMemberId = userVotes[cat.id] || '';
+          const selectedCandidate = cat.candidates.find((c) => c.member_id === selectedMemberId);
 
-                  {selectedMember && (
-                    <span className="badge badge-success" style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
-                      ✓ Đã chọn: {getMemberDisplayName(selectedMember)}
-                    </span>
+          // Top candidates with votes > 0
+          const votedCandidates = cat.candidates.filter((c) => c.vote_count > 0).sort((a, b) => b.vote_count - a.vote_count);
+
+          return (
+            <div key={cat.id} className="card" style={{ padding: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                <div>
+                  <span
+                    style={{
+                      background: 'var(--primary-light, #eff6ff)',
+                      color: 'var(--primary, #1e40af)',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      display: 'inline-block',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Hạng mục {index + 1}
+                  </span>
+                  <h2 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', color: 'var(--text-main)' }}>
+                    {cat.title}
+                  </h2>
+                  {cat.description && (
+                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)' }}>
+                      {cat.description}
+                    </p>
                   )}
                 </div>
 
-                {/* Candidate Selection */}
-                <div style={{ marginTop: '14px' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <span className="badge badge-success" style={{ fontSize: '0.85rem', padding: '4px 10px' }}>
+                    Tổng: {cat.total_votes} phiếu
+                  </span>
+                </div>
+              </div>
+
+              {/* CURRENT MEMBER CHOICE */}
+              {currentUser && selectedCandidate && (
+                <div
+                  style={{
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    marginBottom: '12px',
+                    fontSize: '0.9rem',
+                    color: '#166534',
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ Lựa chọn hiện tại của bạn: <strong>{getMemberDisplayName(selectedCandidate)}</strong> ({selectedCandidate.vote_count} phiếu)
+                </div>
+              )}
+
+              {/* CANDIDATE SELECTOR FOR LOGGED-IN USERS */}
+              {currentUser && (
+                <div style={{ marginTop: '10px', marginBottom: '16px' }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                    Chọn 1 thành viên từ danh sách lớp:
+                    Chọn 1 thành viên để bình chọn:
                   </label>
 
                   <select
@@ -277,18 +313,58 @@ export const VotingPage: React.FC<VotingPageProps> = ({
                     }}
                   >
                     <option value="">-- Chọn thành viên lớp A1 --</option>
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {getMemberDisplayName(m)}
+                    {cat.candidates.map((m) => (
+                      <option key={m.member_id} value={m.member_id}>
+                        {getMemberDisplayName(m)} — {m.vote_count} phiếu
                       </option>
                     ))}
                   </select>
                 </div>
-              </div>
-            );
-          })}
+              )}
 
-          {/* SAVE BUTTON */}
+              {/* REAL-TIME PUBLIC VOTE COUNT BREAKDOWN */}
+              <div style={{ marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                  Số phiếu hiện tại theo thành viên ({cat.candidates.length} người)
+                </div>
+
+                {votedCandidates.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {votedCandidates.map((c) => (
+                      <span
+                        key={c.member_id}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: selectedMemberId === c.member_id ? '#eff6ff' : '#f8fafc',
+                          border: selectedMemberId === c.member_id ? '1px solid #3b82f6' : '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '4px 10px',
+                          fontSize: '0.85rem',
+                          color: selectedMemberId === c.member_id ? '#1e40af' : 'var(--text-main)',
+                          fontWeight: selectedMemberId === c.member_id ? 700 : 500,
+                        }}
+                      >
+                        <span>{getMemberDisplayName(c)}</span>
+                        <strong style={{ color: '#2563eb', background: '#dbeafe', padding: '1px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>
+                          {c.vote_count} phiếu
+                        </strong>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Chưa có thành viên nào nhận được phiếu bình chọn.
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* SAVE BUTTON FOR LOGGED-IN USERS */}
+        {currentUser && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
             <button
               className="btn btn-primary"
@@ -306,8 +382,8 @@ export const VotingPage: React.FC<VotingPageProps> = ({
               {saving ? 'Đang lưu...' : '💾 Lưu Phiếu Bình Chọn'}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

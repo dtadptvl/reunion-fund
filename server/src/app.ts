@@ -167,6 +167,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     attachmentService,
     activityService,
     lotteryService,
+    votingService,
   });
   app.register(authRoutes, {
     db,
