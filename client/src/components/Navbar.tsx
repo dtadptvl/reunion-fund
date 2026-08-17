@@ -10,7 +10,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab }) => {
     <header className="navbar">
       <div className="navbar-inner">
         <a href="#home" onClick={() => onSelectTab('home')} className="brand-logo">
-          🎓 Quỹ Kỷ Niệm 10 Năm
+          🎓 Lớp A1 — Khóa 48 (2013–2016)
         </a>
         <nav className="nav-links">
           <button

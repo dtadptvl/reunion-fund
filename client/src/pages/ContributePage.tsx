@@ -209,7 +209,7 @@ export const ContributePage: React.FC = () => {
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       <input
                         type="text"
-                        placeholder="Gõ để tìm tên trong danh sách 40 thành viên..."
+                        placeholder="Gõ để tìm tên..."
                         value={searchQuery}
                         onFocus={() => setShowSuggestions(true)}
                         onChange={(e) => {

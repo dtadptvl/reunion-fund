@@ -31,7 +31,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute }) => {
       {/* Hero Section */}
       <section className="hero-card">
         <div className="hero-subtitle">KỶ NIỆM 10 NĂM RA TRƯỜNG</div>
-        <h1 className="hero-title">{overview.eventTitle || 'QUỸ HỌP LỚP MINH BẠCH'}</h1>
+        <h1 className="hero-title">{overview.eventTitle || 'LỚP A1 — KHÓA 48'}</h1>
+        <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '16px' }}>
+          Niên khóa 2013–2016
+        </div>
 
         <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>SỐ DƯ QUỸ HIỆN TẠI</div>
         <div className="hero-balance">{formatVND(overview.balance)}</div>

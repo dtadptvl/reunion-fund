@@ -30,7 +30,7 @@ const envSchema = z.object({
   COOKIE_SECURE: z.coerce.boolean().default(false),
 
   DEFAULT_CONTRIBUTION_AMOUNT: z.coerce.number().default(500000),
-  REUNION_EVENT_TITLE: z.string().default('KỶ NIỆM 10 NĂM NGÀY RA TRƯỜNG'),
+  REUNION_EVENT_TITLE: z.string().default('LỚP A1 — KHÓA 48'),
 
   RECONCILIATION_CRON: z.string().default('30 3 * * *'),
   AUTO_RECONCILE_ON_STARTUP: z.string().transform((v) => v === 'true').default('true'),

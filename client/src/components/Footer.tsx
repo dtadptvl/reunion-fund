@@ -9,7 +9,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
     <footer className="footer">
       <div className="footer-inner">
         <div>
-          © 2026 Kỷ Niệm 10 Năm Ngày Ra Trường — Quỹ Lớp Minh Bạch
+          © 2026 Lớp A1 — Khóa 48 (Niên khóa 2013–2016) — Kỷ Niệm 10 Năm Ra Trường
         </div>
         <div>
           <button
