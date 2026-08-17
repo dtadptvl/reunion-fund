@@ -92,7 +92,8 @@ export class AttachmentService {
   saveAttachment(
     expenseId: string,
     originalFilename: string,
-    buffer: Buffer
+    buffer: Buffer,
+    uploadedBy = 'system'
   ): AttachmentRow {
     const validation = validateAttachmentMagicBytes(buffer);
     if (!validation.isValid || !validation.mimeType) {
@@ -122,7 +123,7 @@ export class AttachmentService {
       file_size: buffer.length,
       sha256_hash: sha256Hash,
       storage_path: storagePath,
-      uploaded_by: 'system',
+      uploaded_by: uploadedBy,
       created_at: new Date().toISOString(),
     };
 
@@ -149,5 +150,41 @@ export class AttachmentService {
     return this.db
       .prepare('SELECT * FROM attachments WHERE expense_id = ? ORDER BY created_at ASC')
       .all(expenseId) as AttachmentRow[];
+  }
+
+  getAttachmentById(id: string): AttachmentRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM attachments WHERE id = ?')
+      .get(id) as AttachmentRow | undefined;
+  }
+
+  deleteAttachment(id: string): boolean {
+    const attachment = this.getAttachmentById(id);
+    if (!attachment) return false;
+
+    // Delete from filesystem safely
+    const safePath = this.getSafeFilePath(attachment);
+    if (safePath && fs.existsSync(safePath)) {
+      try {
+        fs.unlinkSync(safePath);
+      } catch (err) {
+        console.warn('Failed to delete file from disk:', err);
+      }
+    }
+
+    this.db.prepare('DELETE FROM attachments WHERE id = ?').run(id);
+    return true;
+  }
+
+  getSafeFilePath(attachment: AttachmentRow): string | null {
+    // Resolve absolute path and verify it stays inside uploadDir
+    const resolvedUploadDir = path.resolve(this.uploadDir);
+    const resolvedFilePath = path.resolve(resolvedUploadDir, path.basename(attachment.file_name));
+
+    if (!resolvedFilePath.startsWith(resolvedUploadDir)) {
+      return null;
+    }
+
+    return resolvedFilePath;
   }
 }

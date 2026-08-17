@@ -49,8 +49,22 @@ export function runMigrations(db: Database.Database): void {
     );
   `);
 
-  const migrationsDir = path.join(__dirname, 'migrations');
-  if (!fs.existsSync(migrationsDir)) {
+  const candidateDirs = [
+    path.join(__dirname, 'migrations'),
+    path.join(__dirname, '../../src/db/migrations'),
+    path.join(process.cwd(), 'server/src/db/migrations'),
+    path.join(process.cwd(), 'server/dist/db/migrations'),
+  ];
+
+  let migrationsDir: string | null = null;
+  for (const dir of candidateDirs) {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).some((f) => f.endsWith('.sql'))) {
+      migrationsDir = dir;
+      break;
+    }
+  }
+
+  if (!migrationsDir) {
     return;
   }
 

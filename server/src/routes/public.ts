@@ -1,8 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
+import fs from 'fs';
 import { MemberService, sortVietnameseMembers } from '../services/member.service.js';
 import { ExportService } from '../services/export.service.js';
+import { AttachmentService } from '../services/attachment.service.js';
 import {
   generatePaymentCode,
   formatTransferContent,
@@ -16,6 +18,7 @@ export async function publicRoutes(
     db: Database.Database;
     memberService: MemberService;
     exportService: ExportService;
+    attachmentService: AttachmentService;
   }
 ) {
   const db = options.db;
@@ -119,15 +122,18 @@ export async function publicRoutes(
     const { id } = request.params as { id: string };
     const { requestedName, notes } = request.body as { requestedName?: string; notes?: string };
 
-    if (!requestedName || !requestedName.trim()) {
-      return reply.status(400).send({ error: 'Vui lòng nhập tên đúng của bạn' });
+    if (!requestedName || !requestedName.trim() || requestedName.trim().length > 100) {
+      return reply.status(400).send({ error: 'Vui lòng nhập tên đúng của bạn (tối đa 100 ký tự)' });
+    }
+    if (notes && notes.length > 1000) {
+      return reply.status(400).send({ error: 'Ghi chú không được vượt quá 1000 ký tự' });
     }
 
     try {
       const reqRow = options.memberService.createNameCorrectionRequest(
         id,
         requestedName.trim(),
-        notes
+        notes?.trim()
       );
       return {
         success: true,
@@ -147,9 +153,15 @@ export async function publicRoutes(
       amount: number;
     };
 
-    if (!body.amount || body.amount < 10000) {
+    if (
+      !body.amount ||
+      typeof body.amount !== 'number' ||
+      !Number.isInteger(body.amount) ||
+      body.amount < 10000 ||
+      body.amount > 100000000
+    ) {
       return reply.status(400).send({
-        error: 'Số tiền đóng góp tối thiểu là 10.000 ₫',
+        error: 'Số tiền đóng góp phải từ 10.000 ₫ đến 100.000.000 ₫',
       });
     }
 
@@ -167,7 +179,11 @@ export async function publicRoutes(
       memberId = member.id;
       bankDisplayName = member.bank_display_name;
     } else if (body.customName && body.customName.trim()) {
-      const ext = options.memberService.createExternalContributor(body.customName);
+      const trimmedCustomName = body.customName.trim();
+      if (trimmedCustomName.length > 100) {
+        return reply.status(400).send({ error: 'Tên người đóng góp không được vượt quá 100 ký tự' });
+      }
+      const ext = options.memberService.createExternalContributor(trimmedCustomName);
       externalContributorId = ext.id;
       bankDisplayName = generateBankDisplayName(ext.raw_name);
     } else {
@@ -413,5 +429,42 @@ export async function publicRoutes(
     reply.header('Content-Type', 'text/csv; charset=utf-8');
     reply.header('Content-Disposition', `attachment; filename="${type}_reunion.csv"`);
     return reply.send('\uFEFF' + csvContent); // Add UTF-8 BOM for Excel
+  });
+
+  // 9. Public Expense Attachments List
+  app.get('/api/v1/public/expenses/:id/attachments', async (request) => {
+    const { id } = request.params as { id: string };
+    const attachments = options.attachmentService.getAttachmentsForExpense(id);
+    return {
+      attachments: attachments.map((a) => ({
+        id: a.id,
+        expense_id: a.expense_id,
+        original_name: a.original_name,
+        mime_type: a.mime_type,
+        file_size: a.file_size,
+        created_at: a.created_at,
+      })),
+    };
+  });
+
+  // 10. Public Attachment Safe Download / View
+  app.get('/api/v1/public/attachments/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const attachment = options.attachmentService.getAttachmentById(id);
+    if (!attachment) {
+      return reply.status(404).send({ error: 'Không tìm thấy chứng từ' });
+    }
+
+    const filePath = options.attachmentService.getSafeFilePath(attachment);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return reply.status(404).send({ error: 'Tập tin chứng từ không tồn tại' });
+    }
+
+    const buffer = fs.readFileSync(filePath);
+    reply.header('Content-Type', attachment.mime_type);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.original_name)}"`);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    return reply.send(buffer);
   });
 }

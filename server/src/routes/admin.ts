@@ -4,8 +4,22 @@ import { AuthService } from '../services/auth.service.js';
 import { MemberService } from '../services/member.service.js';
 import { ReconciliationService } from '../services/reconciliation.service.js';
 import { AuditService } from '../services/audit.service.js';
+import { AttachmentService } from '../services/attachment.service.js';
 import { ExpenseCategory } from '../db/schema.js';
 import { config } from '../config/env.js';
+
+const VALID_EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  'FOOD',
+  'GIFT_TEACHER',
+  'FLOWERS',
+  'PHOTO_VIDEO',
+  'PRINTING',
+  'TRANSPORT',
+  'REFUND',
+  'FUND_TRANSFER',
+  'OTHER',
+  'UNKNOWN',
+];
 
 export async function adminRoutes(
   app: FastifyInstance,
@@ -15,9 +29,15 @@ export async function adminRoutes(
     memberService: MemberService;
     reconciliationService: ReconciliationService;
     auditService: AuditService;
+    attachmentService: AttachmentService;
   }
 ) {
   const db = options.db;
+
+  // In-memory failed login tracking per IP
+  const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
+  const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+  const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 
   // Middleware helper to check authentication
   const requireAuth = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -31,6 +51,20 @@ export async function adminRoutes(
 
   // 1. Treasurer Login
   app.post('/api/v1/admin/login', async (request, reply) => {
+    const ip = request.ip || '127.0.0.1';
+    const now = Date.now();
+    const loginRecord = failedLoginAttempts.get(ip);
+
+    if (loginRecord && loginRecord.count >= MAX_FAILED_LOGIN_ATTEMPTS) {
+      if (now < loginRecord.resetAt) {
+        return reply.status(429).send({
+          error: 'Quá nhiều lần đăng nhập không thành công. Vui lòng thử lại sau 15 phút.',
+        });
+      } else {
+        failedLoginAttempts.delete(ip);
+      }
+    }
+
     const { username, password } = request.body as { username?: string; password?: string };
     if (!username || !password) {
       return reply.status(400).send({ error: 'Vui lòng nhập tên đăng nhập và mật khẩu' });
@@ -38,8 +72,17 @@ export async function adminRoutes(
 
     const session = await options.authService.authenticate(username, password);
     if (!session) {
+      const current = failedLoginAttempts.get(ip) || { count: 0, resetAt: now + LOGIN_LOCKOUT_MS };
+      failedLoginAttempts.set(ip, {
+        count: current.count + 1,
+        resetAt: now + LOGIN_LOCKOUT_MS,
+      });
+
       return reply.status(401).send({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
     }
+
+    // Reset failed attempts on success
+    failedLoginAttempts.delete(ip);
 
     const token = options.authService.createSession(session);
     reply.setCookie('session_token', token, {
@@ -193,13 +236,17 @@ export async function adminRoutes(
       WHERE id = ?
     `).run(member.id, user.username, notes || null, id);
 
+    const memberDisplayName = member.disambiguator
+      ? `${member.full_name} (${member.disambiguator})`
+      : member.full_name;
+
     options.auditService.log({
       actor: user.username,
       action: 'ASSIGN_CONTRIBUTION',
       entityType: 'CONTRIBUTION',
       entityId: id,
       beforeState: contribution,
-      afterState: { memberId: member.id, memberName: member.full_name },
+      afterState: { memberId: member.id, memberName: memberDisplayName },
       ipAddress: request.ip,
     });
 
@@ -221,6 +268,22 @@ export async function adminRoutes(
     const expense = db.prepare('SELECT * FROM expenses WHERE id = ?').get(id) as any;
     if (!expense) {
       return reply.status(404).send({ error: 'Không tìm thấy khoản chi' });
+    }
+
+    // Validate category if provided
+    if (body.category && !VALID_EXPENSE_CATEGORIES.includes(body.category)) {
+      return reply.status(400).send({ error: 'Danh mục chi tiêu không hợp lệ' });
+    }
+
+    // Validate string lengths
+    if (body.vietnameseTitle && body.vietnameseTitle.length > 200) {
+      return reply.status(400).send({ error: 'Tên khoản chi không được vượt quá 200 ký tự' });
+    }
+    if (body.recipientName && body.recipientName.length > 100) {
+      return reply.status(400).send({ error: 'Tên người nhận không được vượt quá 100 ký tự' });
+    }
+    if (body.notes && body.notes.length > 1000) {
+      return reply.status(400).send({ error: 'Ghi chú không được vượt quá 1000 ký tự' });
     }
 
     const isSettlement = body.category === 'FUND_TRANSFER' ? 1 : expense.is_settlement_transfer;
@@ -275,6 +338,79 @@ export async function adminRoutes(
   };
   app.post('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, handleUpdateExpense);
   app.put('/api/v1/admin/expenses/:id', { preHandler: [requireAuth] }, handleUpdateExpense);
+
+  // 6.1 Upload Proof / Receipt Attachment for Expense
+  app.post('/api/v1/admin/expenses/:id/attachments', { preHandler: [requireAuth] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = (request as any).user;
+
+    const expense = db.prepare('SELECT id FROM expenses WHERE id = ?').get(id);
+    if (!expense) {
+      return reply.status(404).send({ error: 'Không tìm thấy khoản chi' });
+    }
+
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ error: 'Vui lòng chọn tập tin chứng từ' });
+    }
+
+    try {
+      const buffer = await data.toBuffer();
+      const attachment = options.attachmentService.saveAttachment(
+        id,
+        data.filename,
+        buffer,
+        user.username
+      );
+
+      options.auditService.log({
+        actor: user.username,
+        action: 'UPLOAD_ATTACHMENT',
+        entityType: 'ATTACHMENT',
+        entityId: attachment.id,
+        afterState: { expenseId: id, filename: data.filename, size: buffer.length },
+        ipAddress: request.ip,
+      });
+
+      return {
+        success: true,
+        attachment: {
+          id: attachment.id,
+          expense_id: attachment.expense_id,
+          original_name: attachment.original_name,
+          mime_type: attachment.mime_type,
+          file_size: attachment.file_size,
+          created_at: attachment.created_at,
+        },
+      };
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể lưu chứng từ' });
+    }
+  });
+
+  // 6.2 Delete Receipt Attachment
+  app.delete('/api/v1/admin/attachments/:id', { preHandler: [requireAuth] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = (request as any).user;
+
+    const attachment = options.attachmentService.getAttachmentById(id);
+    if (!attachment) {
+      return reply.status(404).send({ error: 'Không tìm thấy chứng từ' });
+    }
+
+    options.attachmentService.deleteAttachment(id);
+
+    options.auditService.log({
+      actor: user.username,
+      action: 'DELETE_ATTACHMENT',
+      entityType: 'ATTACHMENT',
+      entityId: id,
+      beforeState: { id: attachment.id, expenseId: attachment.expense_id, name: attachment.original_name },
+      ipAddress: request.ip,
+    });
+
+    return { success: true };
+  });
 
   // 7. Manual SePay Reconciliation
   app.post('/api/v1/admin/reconcile', { preHandler: [requireAuth] }, async (request, reply) => {

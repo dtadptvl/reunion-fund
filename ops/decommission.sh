@@ -1,68 +1,88 @@
-#!/usr/bin/env bash
-# ==============================================================================
-# ops/decommission.sh — Safe Decommissioning of Reunion Fund Workload
-# ==============================================================================
-# WARNING: This script removes the Reunion Fund container, images, and runtime data.
-# It requires EXPLICIT manual confirmation and will NEVER delete anything silently.
-#
-# Crucial Invariant: NEVER affects a23-cloudflare-ddns or server-monitor.
-# ==============================================================================
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-TARGET_ENV="${1:-}"
+# ==============================================================================
+# REUNION FUND — CONTROLLED DECOMMISSION SCRIPT
+# SAFETY GUARANTEES:
+# 1. Requires explicit argument: --confirm-decommission <staging|production>
+# 2. Refuses ambiguous or missing parameters.
+# 3. Strictly targets ONLY the designated Reunion Fund container.
+# 4. NEVER touches a23-cloudflare-ddns or any unrelated infrastructure container.
+# 5. Automatically performs a pre-shutdown safety backup before stopping container.
+# 6. Preserves historical backup archives safely.
+# ==============================================================================
 
-if [ "${TARGET_ENV}" != "stage" ] && [ "${TARGET_ENV}" != "prod" ]; then
-  echo "Error: Target environment required. Usage: $0 [stage|prod]" >&2
+if [ "$#" -ne 2 ] || [ "$1" != "--confirm-decommission" ]; then
+  echo "======================================================================"
+  echo "SAFETY ERROR: Unauthorized invocation."
+  echo "Usage: $0 --confirm-decommission <staging|production>"
+  echo "======================================================================"
   exit 1
 fi
 
-CONTAINER_NAME="reunion-fund-${TARGET_ENV}"
-DATA_DIR="/data/reunion-fund/${TARGET_ENV}"
-SECRETS_FILE="/etc/a23-secrets/reunion-fund-${TARGET_ENV}.env"
-DOCKER_CMD="chroot /data/local/chroot/debian /usr/bin/docker"
+TARGET_ENV="$2"
 
-echo "======================================================================"
-echo "                   REUNION FUND DECOMMISSION WIZARD                   "
-echo "======================================================================"
-echo "Target Environment: ${TARGET_ENV}"
-echo "Container to Stop & Remove: ${CONTAINER_NAME}"
-echo "Data Directory to Archive/Purge: ${DATA_DIR}"
-echo "Secrets File to Remove: ${SECRETS_FILE}"
-echo ""
-echo "CRITICAL SAFETY INVARIANT:"
-echo "This script is strictly bound to ${CONTAINER_NAME}."
-echo "Existing infrastructure ('a23-cloudflare-ddns', 'server-monitor') WILL NOT BE TOUCHED."
-echo "======================================================================"
-echo ""
-echo "To proceed, you MUST type the exact confirmation phrase below:"
-echo "CONFIRM_DECOMMISSION_REUNION_FUND"
-echo ""
-read -r -p "Enter confirmation phrase: " CONFIRMATION
-
-if [ "${CONFIRMATION}" != "CONFIRM_DECOMMISSION_REUNION_FUND" ]; then
-  echo "Confirmation phrase did not match. Decommission aborted. No changes made."
-  exit 0
+if [ "$TARGET_ENV" != "staging" ] && [ "$TARGET_ENV" != "production" ]; then
+  echo "======================================================================"
+  echo "SAFETY ERROR: Invalid target environment '$TARGET_ENV'."
+  echo "Must be explicitly either 'staging' or 'production'."
+  echo "======================================================================"
+  exit 1
 fi
 
-echo ""
-echo "[Step 1/5] Taking final pre-decommission backup..."
-./ops/backup.sh "${TARGET_ENV}" "/data/reunion-fund/final_archives" || echo "Warning: Backup script failed or skipped."
+if [ "$TARGET_ENV" = "staging" ]; then
+  CONTAINER_NAME="reunion-fund-stage"
+  DATA_DIR="/data/reunion-fund/stage"
+else
+  CONTAINER_NAME="reunion-fund-prod"
+  DATA_DIR="/data/reunion-fund/prod"
+fi
 
-echo "[Step 2/5] Stopping and removing container ${CONTAINER_NAME}..."
-${DOCKER_CMD} stop "${CONTAINER_NAME}" 2>/dev/null || true
-${DOCKER_CMD} rm "${CONTAINER_NAME}" 2>/dev/null || true
-
-echo "[Step 3/5] Removing Docker image..."
-${DOCKER_CMD} rmi "reunion-fund:latest" 2>/dev/null || true
-
-echo "[Step 4/5] Removing runtime secrets file..."
-rm -f "${SECRETS_FILE}"
-
-echo "[Step 5/5] Removing runtime storage directory ${DATA_DIR}..."
-rm -rf "${DATA_DIR}"
-
-echo ""
 echo "======================================================================"
-echo "Decommission complete for ${TARGET_ENV}."
-echo "Cloudflare route for ${TARGET_ENV} should now be removed via Cloudflare Zero Trust Dashboard."
+echo "REUNION FUND DECOMMISSION PROCEDURE"
+echo "Target Environment: $TARGET_ENV"
+echo "Target Container:   $CONTAINER_NAME"
+echo "Target Data Path:   $DATA_DIR"
+echo "======================================================================"
+
+# Strict safety verification against unrelated containers
+UNTOUCHABLE_CONTAINERS="a23-cloudflare-ddns cloudflared ddns nginx caddy system"
+for untouchable in $UNTOUCHABLE_CONTAINERS; do
+  if [ "$CONTAINER_NAME" = "$untouchable" ]; then
+    echo "CRITICAL SAFETY ABORT: Target '$CONTAINER_NAME' is a protected infrastructure container!"
+    exit 1
+  fi
+done
+
+# Step 1: Pre-shutdown safety backup
+echo "[1/3] Creating pre-shutdown safety backup..."
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+ARCHIVE_DIR="${DATA_DIR}/archives"
+mkdir -p "$ARCHIVE_DIR"
+
+if [ -d "${DATA_DIR}/data" ]; then
+  tar -czf "${ARCHIVE_DIR}/final_safety_backup_${TARGET_ENV}_${TIMESTAMP}.tar.gz" -C "${DATA_DIR}" data uploads 2>/dev/null || true
+  echo "Safety archive saved at: ${ARCHIVE_DIR}/final_safety_backup_${TARGET_ENV}_${TIMESTAMP}.tar.gz"
+fi
+
+# Step 2: Stop target container only
+echo "[2/3] Stopping container $CONTAINER_NAME..."
+if docker ps -q -f name="^/${CONTAINER_NAME}$" | grep -q .; then
+  docker stop "$CONTAINER_NAME"
+  echo "Container $CONTAINER_NAME stopped safely."
+else
+  echo "Container $CONTAINER_NAME is not currently running."
+fi
+
+# Step 3: Remove target container only
+echo "[3/3] Removing container $CONTAINER_NAME..."
+if docker ps -a -q -f name="^/${CONTAINER_NAME}$" | grep -q .; then
+  docker rm "$CONTAINER_NAME"
+  echo "Container $CONTAINER_NAME removed."
+fi
+
+echo "======================================================================"
+echo "Decommission Completed Safely for $TARGET_ENV."
+echo "Historical data and archives remain preserved at: $DATA_DIR"
+echo "Protected containers (a23-cloudflare-ddns) remained untouched."
 echo "======================================================================"

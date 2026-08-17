@@ -30,6 +30,9 @@ import { AuthService } from './services/auth.service.js';
 import { ExportService } from './services/export.service.js';
 import { AuditService } from './services/audit.service.js';
 
+import multipart from '@fastify/multipart';
+import { AttachmentService } from './services/attachment.service.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -76,6 +79,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const contributionService = new ContributionService(db);
   const expenseService = new ExpenseService(db, aiProvider);
   const memberService = new MemberService(db);
+  memberService.seedCanonicalRoster();
   const reconciliationService = new ReconciliationService(
     db,
     bankSyncProvider,
@@ -86,6 +90,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
+  const attachmentService = new AttachmentService(db, config.STORAGE_PATH);
 
   // Security Plugins
   app.register(cors, {
@@ -100,6 +105,33 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+  });
+
+  app.register(multipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB
+      files: 5,
+    },
+  });
+
+  // Security Headers Hook
+  app.addHook('onSend', async (request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'SAMEORIGIN');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'self'; img-src 'self' data: https://img.vietqr.io; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'"
+    );
+
+    if (config.COOKIE_SECURE || process.env.NODE_ENV === 'production') {
+      reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+
+    if (request.raw.url && (request.raw.url.startsWith('/api/v1/admin') || request.raw.url.startsWith('/api/v1/auth'))) {
+      reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      reply.header('Pragma', 'no-cache');
+    }
   });
 
   // Ensure upload storage directory exists
@@ -119,6 +151,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     db,
     memberService,
     exportService,
+    attachmentService,
   });
   app.register(adminRoutes, {
     db,
@@ -126,6 +159,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     memberService,
     reconciliationService,
     auditService,
+    attachmentService,
   });
 
   // Serve static client bundle if available

@@ -1,65 +1,101 @@
-#!/usr/bin/env bash
-# ==============================================================================
-# ops/restore.sh — Verified Safe Restore for Reunion Fund
-# ==============================================================================
-# Usage: ./ops/restore.sh <backup_dir_path> <target_env>
-#
-# Verifies SHA256 checksums before applying restore to target environment.
-# Target environment must be offline or safely isolated.
-# ==============================================================================
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-BACKUP_DIR="${1:-}"
-TARGET_ENV="${2:-stage}"
+# ==============================================================================
+# REUNION FUND — RESTORE SCRIPT
+# Validates checksums, checks database integrity, and restores files safely.
+# ==============================================================================
 
-if [ -z "${BACKUP_DIR}" ] || [ ! -d "${BACKUP_DIR}" ]; then
-  echo "Error: Backup directory does not exist or was not specified." >&2
-  echo "Usage: $0 <backup_dir_path> [stage|prod]" >&2
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <backup-archive.tar.gz> [target-db-dir] [target-storage-dir]"
   exit 1
 fi
 
-DEST_DATA_DIR="/data/reunion-fund/${TARGET_ENV}/data"
-DEST_UPLOADS_DIR="/data/reunion-fund/${TARGET_ENV}/uploads"
+ARCHIVE_FILE="$1"
+TARGET_DB_DIR="${2:-/app/data}"
+TARGET_STORAGE_DIR="${3:-/app/uploads}"
+
+if [ ! -f "$ARCHIVE_FILE" ]; then
+  echo "ERROR: Backup archive file not found: $ARCHIVE_FILE"
+  exit 1
+fi
+
+TEMP_RESTORE_DIR=$(mktemp -d "/tmp/rf_restore_XXXXXX")
 
 echo "=================================================="
-echo "REUNION FUND RESTORE — Source: ${BACKUP_DIR}"
-echo "Target Environment: ${TARGET_ENV}"
-echo "Destination Data: ${DEST_DATA_DIR}"
-echo "Destination Uploads: ${DEST_UPLOADS_DIR}"
+echo "Starting Reunion Fund Restore Test / Execution"
+echo "Archive source:   $ARCHIVE_FILE"
+echo "Target DB dir:    $TARGET_DB_DIR"
+echo "Target upload dir:$TARGET_STORAGE_DIR"
 echo "=================================================="
 
-# 1. Verify SHA256 Checksums
-echo "[1/4] Verifying SHA256 integrity checksums..."
-(
-  cd "${BACKUP_DIR}"
-  if [ -f "SHA256SUMS" ]; then
-    sha256sum -c "SHA256SUMS"
-  else
-    echo "Warning: No SHA256SUMS file found in backup directory." >&2
-  fi
-)
+# 1. Extract to temporary sandbox
+echo "[1/4] Extracting archive..."
+tar -xzf "$ARCHIVE_FILE" -C "$TEMP_RESTORE_DIR"
 
-# 2. Prepare Destination Directories
-echo "[2/4] Preparing target directories..."
-mkdir -p "${DEST_DATA_DIR}" "${DEST_UPLOADS_DIR}"
-
-# 3. Restore SQLite Database
-echo "[3/4] Restoring SQLite database file..."
-if [ -f "${BACKUP_DIR}/reunion.db" ]; then
-  cp -f "${BACKUP_DIR}/reunion.db" "${DEST_DATA_DIR}/reunion.db"
-  # Remove stale journal or WAL files from previous runtime if any
-  rm -f "${DEST_DATA_DIR}/reunion.db-wal" "${DEST_DATA_DIR}/reunion.db-shm" "${DEST_DATA_DIR}/reunion.db-journal"
+# 2. Verify SHA-256 Checksums
+echo "[2/4] Verifying checksums..."
+cd "$TEMP_RESTORE_DIR"
+if [ -f checksums.sha256 ]; then
+  sha256sum -c checksums.sha256
+  echo "Checksum verification: PASS"
 else
-  echo "Error: ${BACKUP_DIR}/reunion.db not found!" >&2
+  echo "WARNING: No checksums.sha256 manifest found in archive"
+fi
+
+# 3. Database Integrity Check
+echo "[3/4] Validating database integrity..."
+RESTORED_DB="$TEMP_RESTORE_DIR/data/reunion-fund.db"
+if [ -f "$RESTORED_DB" ]; then
+  if command -v sqlite3 >/dev/null 2>&1; then
+    INTEGRITY=$(sqlite3 "$RESTORED_DB" "PRAGMA integrity_check;")
+    if [ "$INTEGRITY" != "ok" ]; then
+      echo "ERROR: Database integrity check FAILED: $INTEGRITY"
+      exit 1
+    fi
+    ROSTER_COUNT=$(sqlite3 "$RESTORED_DB" "SELECT COUNT(*) FROM members;")
+    echo "Database integrity: OK (Canonical members count: $ROSTER_COUNT)"
+  else
+    node -e "
+      const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync('$RESTORED_DB');
+      const integrity = db.prepare('PRAGMA integrity_check;').get();
+      if (integrity.integrity_check !== 'ok') {
+        console.error('Integrity check failed');
+        process.exit(1);
+      }
+      const count = db.prepare('SELECT COUNT(*) as c FROM members;').get().c;
+      console.log('Database integrity: OK (Members count: ' + count + ')');
+      db.close();
+    "
+  fi
+else
+  echo "ERROR: No database file found in archive"
   exit 1
 fi
 
-# 4. Restore Uploads / Attachments
-echo "[4/4] Extracting uploads archive..."
-if [ -f "${BACKUP_DIR}/uploads.tar.gz" ]; then
-  tar -xzf "${BACKUP_DIR}/uploads.tar.gz" -C "${DEST_UPLOADS_DIR}"
+# 4. Copy to Target Destination
+echo "[4/4] Deploying restored files to target destination..."
+mkdir -p "$TARGET_DB_DIR" "$TARGET_STORAGE_DIR"
+
+cp "$RESTORED_DB" "$TARGET_DB_DIR/reunion-fund.db"
+if [ -f "$TEMP_RESTORE_DIR/data/reunion-fund.db-wal" ]; then
+  cp "$TEMP_RESTORE_DIR/data/reunion-fund.db-wal" "$TARGET_DB_DIR/"
+fi
+if [ -f "$TEMP_RESTORE_DIR/data/reunion-fund.db-shm" ]; then
+  cp "$TEMP_RESTORE_DIR/data/reunion-fund.db-shm" "$TARGET_DB_DIR/"
 fi
 
+if [ -d "$TEMP_RESTORE_DIR/uploads" ]; then
+  cp -r "$TEMP_RESTORE_DIR/uploads"/* "$TARGET_STORAGE_DIR/" 2>/dev/null || true
+fi
+
+# Cleanup
+cd /
+rm -rf "$TEMP_RESTORE_DIR"
+
 echo "=================================================="
-echo "Restore completed successfully into ${TARGET_ENV}."
+echo "Restore Process Completed Successfully!"
+echo "Target DB:      $TARGET_DB_DIR/reunion-fund.db"
+echo "Target Storage: $TARGET_STORAGE_DIR"
 echo "=================================================="
