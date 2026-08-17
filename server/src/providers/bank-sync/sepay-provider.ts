@@ -102,19 +102,34 @@ export class SePayProvider implements BankSyncProvider {
       throw new Error('Invalid SePay webhook payload');
     }
 
+    const transferType = String(
+      payload.transferType ||
+      payload.transfer_type ||
+      (Number(payload.amount_out || 0) > 0 ? 'out' : 'in')
+    ).toLowerCase() === 'out' ? 'out' : 'in';
+
+    const transferAmount = Number(
+      payload.transferAmount ??
+      payload.transfer_amount ??
+      (transferType === 'in' ? payload.amount_in : payload.amount_out) ??
+      0
+    );
+
+    const sepayId = isNaN(Number(payload.id)) ? 0 : Number(payload.id);
+
     return {
-      sepayId: Number(payload.id),
-      gateway: String(payload.gateway || 'Unknown'),
-      transactionDate: String(payload.transactionDate || new Date().toISOString()),
-      accountNumber: String(payload.accountNumber || ''),
-      subAccount: payload.subAccount ? String(payload.subAccount) : null,
-      transferType: String(payload.transferType).toLowerCase() === 'out' ? 'out' : 'in',
-      transferAmount: Number(payload.transferAmount || 0),
-      accumulated: payload.accumulated ? Number(payload.accumulated) : null,
+      sepayId,
+      gateway: String(payload.gateway || payload.bank_brand_name || 'Unknown'),
+      transactionDate: String(payload.transactionDate || payload.transaction_date || new Date().toISOString()),
+      accountNumber: String(payload.accountNumber || payload.account_number || ''),
+      subAccount: payload.subAccount || payload.sub_account ? String(payload.subAccount || payload.sub_account) : null,
+      transferType,
+      transferAmount,
+      accumulated: payload.accumulated != null ? Number(payload.accumulated) : null,
       code: payload.code ? String(payload.code) : null,
-      content: String(payload.content || ''),
+      content: String(payload.content || payload.transaction_content || ''),
       description: payload.description ? String(payload.description) : null,
-      referenceCode: payload.referenceCode ? String(payload.referenceCode) : null,
+      referenceCode: payload.referenceCode || payload.reference_number ? String(payload.referenceCode || payload.reference_number) : null,
       rawPayload: payload,
     };
   }

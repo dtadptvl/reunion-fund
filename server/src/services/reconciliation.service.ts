@@ -62,10 +62,21 @@ export class ReconciliationService {
         for (const tx of result.transactions) {
           totalChecked++;
 
-          // Check if already in bank_transactions
+          // Check if already in bank_transactions (by sepay_id, reference_code, or unique transaction tuple)
           const existing = this.db
-            .prepare('SELECT id FROM bank_transactions WHERE sepay_id = ?')
-            .get(tx.sepayId) as { id: string } | undefined;
+            .prepare(`
+              SELECT id FROM bank_transactions
+              WHERE (sepay_id = ? AND sepay_id != 0)
+                 OR (reference_code IS NOT NULL AND reference_code = ?)
+                 OR (content = ? AND transaction_date = ? AND transfer_amount = ?)
+            `)
+            .get(
+              tx.sepayId,
+              tx.referenceCode,
+              tx.content,
+              tx.transactionDate,
+              tx.transferAmount
+            ) as { id: string } | undefined;
 
           if (existing) {
             alreadyPresent++;
