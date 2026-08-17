@@ -380,7 +380,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           <div className="card-header">
             <h2 className="card-title">Yêu cầu sửa tên thành viên lớp</h2>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+
+          {/* Desktop Table View */}
+          <div className="desktop-only" style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -442,6 +444,68 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Stacked Card View */}
+          <div className="mobile-only income-cards-mobile">
+            {exceptions.pendingCorrections.map((item: any) => (
+              <div key={item.id} className="income-card-item">
+                <div className="income-card-row">
+                  <span className="income-card-label">Tên hiện tại:</span>
+                  <strong style={{ textAlign: 'right' }}>{item.current_name}</strong>
+                </div>
+
+                <div className="income-card-row">
+                  <span className="income-card-label">Yêu cầu sửa:</span>
+                  <strong style={{ color: 'var(--primary)', textAlign: 'right' }}>{item.requested_name}</strong>
+                </div>
+
+                {item.notes && (
+                  <div className="income-card-row">
+                    <span className="income-card-label">Ghi chú:</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{item.notes}</span>
+                  </div>
+                )}
+
+                <div className="income-card-row">
+                  <span className="income-card-label">Thời gian:</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {formatDateVN(item.created_at)}
+                  </span>
+                </div>
+
+                <div className="income-card-row" style={{ marginTop: '6px', paddingTop: '8px', borderTop: '1px dashed var(--border-color)', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: '6px 14px', fontSize: '0.85rem', flex: '1' }}
+                    onClick={async () => {
+                      await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'APPROVE' }),
+                      });
+                      loadData();
+                    }}
+                  >
+                    ✓ Duyệt
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    style={{ padding: '6px 14px', fontSize: '0.85rem', flex: '1' }}
+                    onClick={async () => {
+                      await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'REJECT' }),
+                      });
+                      loadData();
+                    }}
+                  >
+                    ✕ Từ chối
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

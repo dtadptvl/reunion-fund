@@ -9,8 +9,9 @@ export const ContributePage: React.FC = () => {
   const [isCustomName, setIsCustomName] = useState(false);
   const [customName, setCustomName] = useState('');
 
-  // Suggested amount from server (default 500,000 VND)
-  const [suggestedAmount, setSuggestedAmount] = useState<number>(500000);
+  // Suggested amount from server (loaded dynamically from public config, no stale hardcoded flash)
+  const [suggestedAmount, setSuggestedAmount] = useState<number | null>(null);
+  const [loadingConfig, setLoadingConfig] = useState(true);
   const [customAmountInput, setCustomAmountInput] = useState<string>('');
   const [isCustomAmount, setIsCustomAmount] = useState(false);
 
@@ -37,11 +38,15 @@ export const ContributePage: React.FC = () => {
     fetch('/api/v1/public/config')
       .then((res) => res.json())
       .then((data) => {
-        if (data.suggestedAmount && typeof data.suggestedAmount === 'number') {
+        if (data.suggestedAmount && typeof data.suggestedAmount === 'number' && data.suggestedAmount > 0) {
           setSuggestedAmount(data.suggestedAmount);
         }
+        setLoadingConfig(false);
       })
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        console.error(err);
+        setLoadingConfig(false);
+      });
   };
 
   useEffect(() => {
@@ -113,10 +118,10 @@ export const ContributePage: React.FC = () => {
 
   const handleCreateQR = async () => {
     setErrorMessage('');
-    const finalAmount = isCustomAmount ? Number(customAmountInput) : suggestedAmount;
+    const finalAmount = isCustomAmount ? Number(customAmountInput) : (suggestedAmount || 0);
 
-    if (!finalAmount || isNaN(finalAmount) || finalAmount < 10000) {
-      setErrorMessage('Vui lòng nhập số tiền đóng góp hợp lệ (tối thiểu 10.000 ₫)');
+    if (!finalAmount || isNaN(finalAmount) || finalAmount <= 0) {
+      setErrorMessage('Vui lòng chọn hoặc nhập số tiền đóng góp hợp lệ (số nguyên dương VNĐ)');
       return;
     }
 
@@ -402,6 +407,7 @@ export const ContributePage: React.FC = () => {
                 <button
                   type="button"
                   className={`btn ${!isCustomAmount ? 'btn-primary' : 'btn-outline'}`}
+                  disabled={loadingConfig || suggestedAmount === null}
                   onClick={() => {
                     setIsCustomAmount(false);
                     setCustomAmountInput('');
@@ -414,10 +420,20 @@ export const ContributePage: React.FC = () => {
                     justifyContent: 'center',
                     height: 'auto',
                     borderWidth: '2px',
+                    opacity: loadingConfig ? 0.7 : 1,
                   }}
                 >
-                  <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{formatVND(suggestedAmount)}</span>
-                  <span style={{ fontSize: '0.85rem', marginTop: '2px', opacity: 0.9 }}>Mức đề xuất</span>
+                  {suggestedAmount !== null ? (
+                    <>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{formatVND(suggestedAmount)}</span>
+                      <span style={{ fontSize: '0.85rem', marginTop: '2px', opacity: 0.9 }}>Mức đề xuất</span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '1rem', fontWeight: 600 }}>Đang tải...</span>
+                      <span style={{ fontSize: '0.85rem', marginTop: '2px', opacity: 0.7 }}>Mức đề xuất</span>
+                    </>
+                  )}
                 </button>
 
                 {/* Option 2: Custom Amount */}

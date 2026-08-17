@@ -229,4 +229,25 @@ describe('Phase 4: Mobile & Treasurer Undo/Review Tests', () => {
     const contrib = db.prepare('SELECT * FROM contributions WHERE id = ?').get('c-unresolved') as any;
     expect(contrib.contributor_type).toBe('UNRESOLVED');
   });
+
+  // 5. Configured suggested amount is dynamic and returns exact stored value (1,000,000)
+  it('serves dynamic suggested amount from database (e.g. 1,000,000) without stale default', async () => {
+    // Set suggested amount to 1,000,000 in database
+    db.prepare(`
+      INSERT INTO system_state (key, value, updated_at)
+      VALUES ('suggested_contribution_amount', '1000000', datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = '1000000', updated_at = datetime('now')
+    `).run();
+
+    const configRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/public/config',
+    });
+    expect(configRes.statusCode).toBe(200);
+    const body = JSON.parse(configRes.payload);
+    expect(body.suggestedAmount).toBe(1000000);
+    expect(body.suggestedAmount).not.toBe(500000);
+  });
 });
+
+
