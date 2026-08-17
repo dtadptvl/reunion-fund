@@ -391,7 +391,7 @@ describe('T1–T17 Comprehensive Functional Acceptance Matrix', () => {
 
     // Appears in treasurer review queue
     const pendingExpenses = db
-      .prepare('SELECT * FROM expenses WHERE category = "UNKNOWN"')
+      .prepare("SELECT * FROM expenses WHERE category = 'UNKNOWN'")
       .all();
     expect(pendingExpenses.length).toBeGreaterThanOrEqual(1);
 
