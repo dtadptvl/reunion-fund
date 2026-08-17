@@ -439,5 +439,14 @@ button, input, select, textarea {
   .receipt-filename {
     max-width: 130px;
   }
+  .income-card-row {
+    flex-wrap: wrap;
+  }
+  .income-card-row strong, .income-card-row span, .income-card-row code {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
 }
+
 

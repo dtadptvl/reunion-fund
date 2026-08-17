@@ -452,7 +452,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           <div className="card-header">
             <h2 className="card-title">Khoản thu chưa xác định được người đóng</h2>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          
+          {/* Desktop Table View */}
+          <div className="desktop-only" style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -488,6 +490,64 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Stacked Card View */}
+          <div className="mobile-only income-cards-mobile">
+            {exceptions.unresolvedIncome.map((item: any) => (
+              <div key={item.id} className="income-card-item">
+                <div className="income-card-row">
+                  <span className="income-card-label">Thời gian:</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {formatDateVN(item.created_at)}
+                  </span>
+                </div>
+
+                <div className="income-card-row">
+                  <span className="income-card-label">Số tiền:</span>
+                  <strong style={{ color: 'var(--income)', fontSize: '1rem' }}>
+                    +{formatVND(item.amount)}
+                  </strong>
+                </div>
+
+                <div className="income-card-row">
+                  <span className="income-card-label">Nội dung CK:</span>
+                  <code style={{ fontSize: '0.85rem', background: 'var(--bg-card-subtle)', padding: '2px 6px', borderRadius: '4px' }}>
+                    {item.content || item.description}
+                  </code>
+                </div>
+
+                <div className="income-card-row">
+                  <span className="income-card-label">Trạng thái:</span>
+                  <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>
+                    Chưa xác định
+                  </span>
+                </div>
+
+                <div className="income-card-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '6px', marginTop: '4px' }}>
+                  <span className="income-card-label">Gán vào thành viên:</span>
+                  <select
+                    onChange={(e) => handleAssignContribution(item.id, e.target.value)}
+                    defaultValue=""
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.9rem',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <option value="">-- Chọn thành viên --</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.disambiguator ? `${m.full_name} (${m.disambiguator})` : m.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -586,19 +646,27 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
                     </span>
                   </div>
 
-                  <div className="income-card-row" style={{ alignItems: 'center' }}>
+                  <div className="income-card-row" style={{ alignItems: 'flex-start' }}>
                     <span className="income-card-label">Trạng thái / đối chiếu:</span>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '100%' }}>
                       <span className="badge badge-neutral" style={{ fontSize: '0.75rem' }}>
                         {MATCH_METHOD_LABELS[c.match_method] || c.match_method || 'Hoàn tất'}
                       </span>
                       {(c.match_method === 'MANUAL_TREASURER_ASSIGNMENT' || c.match_method === 'MANUAL_ASSIGNMENT') && (
                         <button
                           className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '2px 8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          style={{
+                            fontSize: '0.75rem',
+                            padding: '3px 8px',
+                            color: 'var(--danger)',
+                            borderColor: 'rgba(239, 68, 68, 0.4)',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '100%',
+                            boxSizing: 'border-box',
+                          }}
                           onClick={() => handleUnassignContribution(c.id)}
                         >
-                          ↩️ Hoàn tác gán
+                          Hoàn tác gán
                         </button>
                       )}
                     </div>
