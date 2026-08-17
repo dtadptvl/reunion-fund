@@ -4,6 +4,7 @@ import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { ActivityService } from '../services/activity.service.js';
 import { LotteryService } from '../services/lottery.service.js';
+import { VotingService } from '../services/voting.service.js';
 import { config } from '../config/env.js';
 
 export async function authRoutes(
@@ -14,11 +15,13 @@ export async function authRoutes(
     auditService: AuditService;
     activityService?: ActivityService;
     lotteryService?: LotteryService;
+    votingService?: VotingService;
   }
 ) {
   const { db, authService, auditService } = options;
   const activityService = options.activityService || new ActivityService(db);
   const lotteryService = options.lotteryService || new LotteryService(db);
+  const votingService = options.votingService || new VotingService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -401,8 +404,64 @@ export async function authRoutes(
       );
       return result;
     } catch (err: any) {
-      return reply.status(400).send({ error: err?.message || 'Không thể lưu thông tin đăng ký.' });
+      return reply.status(400).send({ error: err?.message || 'Không thể lưu đăng ký tham gia hoạt động.' });
+    }
+  });
+
+  // 9. Get Voting Categories & Current Member Votes
+  app.get('/api/v1/auth/votes', async (request, reply) => {
+    const sessionToken = (request.cookies as any)?.session_token;
+    const session = authService.validateSession(sessionToken);
+
+    if (!session) {
+      return reply.status(401).send({ error: 'Vui lòng đăng nhập để tham gia bình chọn.' });
+    }
+
+    const categories = votingService.getCategories();
+    const userVotes = votingService.getUserVotes(session.userId);
+    const isLocked = votingService.isVotingLocked();
+
+    return {
+      isLocked,
+      categories,
+      userVotes,
+    };
+  });
+
+  // 10. Cast/Update Member Votes
+  app.post('/api/v1/auth/votes', async (request, reply) => {
+    const sessionToken = (request.cookies as any)?.session_token;
+    const session = authService.validateSession(sessionToken);
+
+    if (!session) {
+      return reply.status(401).send({ error: 'Vui lòng đăng nhập để bình chọn.' });
+    }
+
+    if (!session.memberId) {
+      return reply.status(400).send({ error: 'Tài khoản chưa liên kết với thành viên trong danh sách lớp.' });
+    }
+
+    const body = request.body as {
+      votes?: Array<{
+        categoryId: string;
+        candidateMemberId: string;
+      }>;
+    };
+
+    if (!body || !Array.isArray(body.votes) || body.votes.length === 0) {
+      return reply.status(400).send({ error: 'Dữ liệu bình chọn không hợp lệ.' });
+    }
+
+    try {
+      const result = votingService.castVotes(
+        session.userId,
+        session.memberId,
+        body.votes,
+        session.username
+      );
+      return result;
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể lưu bình chọn.' });
     }
   });
 }
-

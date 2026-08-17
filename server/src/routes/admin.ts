@@ -6,6 +6,7 @@ import { ReconciliationService } from '../services/reconciliation.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { AttachmentService } from '../services/attachment.service.js';
 import { ActivityService } from '../services/activity.service.js';
+import { VotingService } from '../services/voting.service.js';
 import { ExpenseCategory } from '../db/schema.js';
 import { config } from '../config/env.js';
 
@@ -32,10 +33,12 @@ export async function adminRoutes(
     auditService: AuditService;
     attachmentService: AttachmentService;
     activityService?: ActivityService;
+    votingService?: VotingService;
   }
 ) {
   const db = options.db;
   const activityService = options.activityService || new ActivityService(db);
+  const votingService = options.votingService || new VotingService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -670,6 +673,56 @@ export async function adminRoutes(
         ? 'Đã khóa đăng ký tham gia hoạt động.'
         : 'Đã mở lại đăng ký tham gia hoạt động.',
     };
+  });
+
+  // 14. Admin Voting Results Breakdown
+  app.get('/api/v1/admin/voting/results', { preHandler: [requireAdmin] }, async () => {
+    return votingService.getAdminResults();
+  });
+
+  // 15. Admin Lock / Reopen Voting
+  app.post('/api/v1/admin/voting/lock', { preHandler: [requireAdmin] }, async (request, reply) => {
+    const user = (request as any).user;
+    const body = request.body as { isLocked?: boolean };
+
+    if (typeof body.isLocked !== 'boolean') {
+      return reply.status(400).send({ error: 'Trạng thái khóa bình chọn không hợp lệ.' });
+    }
+
+    const result = votingService.setVotingLock(body.isLocked, user.username);
+    return {
+      success: true,
+      isLocked: result.isLocked,
+      message: result.isLocked
+        ? 'Đã khóa bình chọn trao giải.'
+        : 'Đã mở lại bình chọn trao giải.',
+    };
+  });
+
+  // 16. Admin Manual Tie-Break Winner Selection
+  app.post('/api/v1/admin/voting/categories/:id/winner', { preHandler: [requireAdmin] }, async (request, reply) => {
+    const user = (request as any).user;
+    const { id } = request.params as { id: string };
+    const body = request.body as { winnerMemberId?: string };
+
+    if (!body.winnerMemberId) {
+      return reply.status(400).send({ error: 'Vui lòng chọn thành viên nhận giải.' });
+    }
+
+    try {
+      const result = votingService.setManualWinner(id, body.winnerMemberId, user.username);
+      return {
+        success: true,
+        message: 'Đã chọn thành viên đạt giải.',
+      };
+    } catch (err: any) {
+      return reply.status(400).send({ error: err?.message || 'Không thể chọn người đạt giải.' });
+    }
+  });
+
+  // 17. Admin Award Presentation Data (TV/Projector Mode)
+  app.get('/api/v1/admin/voting/presentation', { preHandler: [requireAdmin] }, async () => {
+    return votingService.getPresentationData();
   });
 }
 

@@ -7,10 +7,13 @@ import { ContributorsPage } from './pages/ContributorsPage.js';
 import { ExpensesPage } from './pages/ExpensesPage.js';
 import { SettlementPage } from './pages/SettlementPage.js';
 import { ActivitiesPage } from './pages/ActivitiesPage.js';
+import { VotingPage } from './pages/VotingPage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { RegisterPage } from './pages/RegisterPage.js';
 import { VerifyEmailPage } from './pages/VerifyEmailPage.js';
 import { AdminDashboardPage } from './pages/AdminDashboardPage.js';
+import { AdminVotingResultsPage } from './pages/AdminVotingResultsPage.js';
+import { AwardPresentationPage } from './pages/AwardPresentationPage.js';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -79,10 +82,51 @@ export const App: React.FC = () => {
             onGoToRegister={() => setCurrentTab('register')}
           />
         )}
+        {currentTab === 'voting' && (
+          <VotingPage
+            currentUser={currentUser}
+            onGoToLogin={() => setCurrentTab('login')}
+            onGoToRegister={() => setCurrentTab('register')}
+          />
+        )}
         {currentTab === 'contribute' && <ContributePage />}
         {currentTab === 'contributors' && <ContributorsPage />}
         {currentTab === 'expenses' && <ExpensesPage />}
         {currentTab === 'settlement' && <SettlementPage />}
+
+        {/* ADMIN VOTING & PRESENTATION TABS */}
+        {currentTab === 'admin-voting' && (
+          currentUser?.role === 'ADMIN' ? (
+            <AdminVotingResultsPage
+              onGoToPresentation={() => setCurrentTab('award-presentation')}
+              onBackToDashboard={() => setCurrentTab('admin')}
+            />
+          ) : (
+            <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
+              <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
+              <p>Trang kết quả bình chọn chỉ dành cho Ban Quản trị.</p>
+              <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
+                Về Trang Chủ
+              </button>
+            </div>
+          )
+        )}
+
+        {currentTab === 'award-presentation' && (
+          currentUser?.role === 'ADMIN' ? (
+            <AwardPresentationPage
+              onExit={() => setCurrentTab('admin-voting')}
+            />
+          ) : (
+            <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
+              <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
+              <p>Trang trình chiếu trao giải chỉ dành cho Ban Quản trị.</p>
+              <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
+                Về Trang Chủ
+              </button>
+            </div>
+          )
+        )}
 
         {currentTab === 'register' && (
           <RegisterPage
@@ -102,7 +146,12 @@ export const App: React.FC = () => {
         {currentTab === 'login' && (
           currentUser ? (
             currentUser.role === 'ADMIN' ? (
-              <AdminDashboardPage user={currentUser} onLogout={handleLogout} />
+              <AdminDashboardPage
+                user={currentUser}
+                onLogout={handleLogout}
+                onGoToVotingResults={() => setCurrentTab('admin-voting')}
+                onGoToPresentation={() => setCurrentTab('award-presentation')}
+              />
             ) : (
               <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
                 <h2 style={{ color: 'var(--primary)', marginTop: 0 }}>Đã Đăng Nhập Thành Công</h2>
@@ -127,7 +176,12 @@ export const App: React.FC = () => {
         {currentTab === 'admin' && (
           currentUser ? (
             currentUser.role === 'ADMIN' ? (
-              <AdminDashboardPage user={currentUser} onLogout={handleLogout} />
+              <AdminDashboardPage
+                user={currentUser}
+                onLogout={handleLogout}
+                onGoToVotingResults={() => setCurrentTab('admin-voting')}
+                onGoToPresentation={() => setCurrentTab('award-presentation')}
+              />
             ) : (
               <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
                 <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
