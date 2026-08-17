@@ -157,11 +157,11 @@ export async function publicRoutes(
       !body.amount ||
       typeof body.amount !== 'number' ||
       !Number.isInteger(body.amount) ||
-      body.amount < 10000 ||
-      body.amount > 100000000
+      body.amount <= 0 ||
+      body.amount > 1000000000
     ) {
       return reply.status(400).send({
-        error: 'Số tiền đóng góp phải từ 10.000 ₫ đến 100.000.000 ₫',
+        error: 'Số tiền đóng góp phải là số nguyên dương hợp lệ (VND)',
       });
     }
 

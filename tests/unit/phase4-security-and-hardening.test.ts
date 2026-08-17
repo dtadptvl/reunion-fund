@@ -81,19 +81,35 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
   });
 
   // 3. Input Validation
-  it('rejects invalid or out-of-range contribution amounts', async () => {
+  it('validates contribution amounts strictly as positive integers without arbitrary 10k minimum', async () => {
     const members = db.prepare('SELECT id FROM members LIMIT 1').all() as any[];
     const memberId = members[0].id;
 
-    // Below minimum
-    const resTooLow = await app.inject({
+    // Valid small positive integer (e.g. 5000 VND is now accepted)
+    const resValidSmall = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
       payload: { memberId, amount: 5000 },
     });
-    expect(resTooLow.statusCode).toBe(400);
+    expect(resValidSmall.statusCode).toBe(200);
 
-    // Non-integer
+    // Zero rejected
+    const resZero = await app.inject({
+      method: 'POST',
+      url: '/api/v1/public/intent',
+      payload: { memberId, amount: 0 },
+    });
+    expect(resZero.statusCode).toBe(400);
+
+    // Negative rejected
+    const resNegative = await app.inject({
+      method: 'POST',
+      url: '/api/v1/public/intent',
+      payload: { memberId, amount: -50000 },
+    });
+    expect(resNegative.statusCode).toBe(400);
+
+    // Non-integer / float rejected
     const resFloat = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
@@ -101,11 +117,11 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
     });
     expect(resFloat.statusCode).toBe(400);
 
-    // Above maximum
+    // Unreasonably huge value rejected
     const resTooHigh = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId, amount: 200000000 },
+      payload: { memberId, amount: 2000000000 },
     });
     expect(resTooHigh.statusCode).toBe(400);
   });

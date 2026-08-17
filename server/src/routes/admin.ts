@@ -463,7 +463,7 @@ export async function adminRoutes(
     const { amount } = request.body as { amount?: number };
     const user = (request as any).user;
 
-    if (!amount || typeof amount !== 'number' || amount <= 0 || !Number.isInteger(amount)) {
+    if (!amount || typeof amount !== 'number' || amount <= 0 || !Number.isInteger(amount) || amount > 1000000000) {
       return reply.status(400).send({ error: 'Số tiền đề xuất phải là số nguyên dương hợp lệ' });
     }
 
