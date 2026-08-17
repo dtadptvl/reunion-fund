@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatVND } from '../utils/format.js';
 
 export const ContributePage: React.FC = () => {
   const [members, setMembers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [isCustomName, setIsCustomName] = useState(false);
   const [customName, setCustomName] = useState('');
 
-  const [selectedAmount, setSelectedAmount] = useState<number>(500000);
+  // Suggested amount from server (default 500,000 VND)
+  const [suggestedAmount, setSuggestedAmount] = useState<number>(500000);
   const [customAmountInput, setCustomAmountInput] = useState<string>('');
   const [isCustomAmount, setIsCustomAmount] = useState(false);
 
@@ -23,16 +25,38 @@ export const ContributePage: React.FC = () => {
   const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState('');
   const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
 
-  // Fetch roster
-  const loadMembers = () => {
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
+  // Fetch roster and suggested config
+  const loadData = () => {
     fetch('/api/v1/public/members')
       .then((res) => res.json())
       .then((data) => setMembers(data.members || []))
       .catch((err) => console.error(err));
+
+    fetch('/api/v1/public/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.suggestedAmount && typeof data.suggestedAmount === 'number') {
+          setSuggestedAmount(data.suggestedAmount);
+        }
+      })
+      .catch((err) => console.error(err));
   };
 
   useEffect(() => {
-    loadMembers();
+    loadData();
+  }, []);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Poll for payment confirmation once intent created
@@ -54,11 +78,44 @@ export const ContributePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [intentData, isPaid]);
 
+  const removeDiacritics = (str: string) =>
+    str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase();
+
+  const getMemberDisplayName = (m: any) =>
+    m ? `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}` : '';
+
+  const filteredMembers = members.filter((m) => {
+    if (!searchQuery.trim()) return true;
+    const displayName = getMemberDisplayName(m);
+    const q = searchQuery.trim();
+    return (
+      displayName.toLowerCase().includes(q.toLowerCase()) ||
+      removeDiacritics(displayName).includes(removeDiacritics(q))
+    );
+  });
+
+  const handleSelectMember = (memberId: string) => {
+    setSelectedMemberId(memberId);
+    setCorrectionSuccessMsg('');
+    setShowSuggestions(false);
+    const m = members.find((x) => x.id === memberId);
+    if (m) {
+      setSearchQuery(getMemberDisplayName(m));
+    } else if (!memberId) {
+      setSearchQuery('');
+    }
+  };
+
   const handleCreateQR = async () => {
     setErrorMessage('');
-    const finalAmount = isCustomAmount ? Number(customAmountInput) : selectedAmount;
+    const finalAmount = isCustomAmount ? Number(customAmountInput) : suggestedAmount;
 
-    if (!finalAmount || finalAmount < 10000) {
+    if (!finalAmount || isNaN(finalAmount) || finalAmount < 10000) {
       setErrorMessage('Vui lòng nhập số tiền đóng góp hợp lệ (tối thiểu 10.000 ₫)');
       return;
     }
@@ -124,12 +181,6 @@ export const ContributePage: React.FC = () => {
 
   const selectedMember = members.find((m) => m.id === selectedMemberId);
 
-  const filteredMembers = members.filter((m) =>
-    (m.full_name + (m.disambiguator ? ` (${m.disambiguator})` : ''))
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase())
-  );
-
   return (
     <div style={{ maxWidth: '640px', margin: '0 auto' }}>
       <div className="card">
@@ -153,25 +204,83 @@ export const ContributePage: React.FC = () => {
 
               {!isCustomName ? (
                 <div>
-                  <input
-                    type="text"
-                    placeholder="Tìm tên trong danh sách 40 thành viên..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-color)',
-                      marginBottom: '10px',
-                    }}
-                  />
+                  {/* Live Autocomplete Search Input */}
+                  <div ref={autocompleteRef} style={{ position: 'relative', marginBottom: '10px' }}>
+                    <input
+                      type="text"
+                      placeholder="Gõ để tìm tên trong danh sách 40 thành viên..."
+                      value={searchQuery}
+                      onFocus={() => setShowSuggestions(true)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setShowSuggestions(true);
+                        // If user completely cleared the search query, clear selection
+                        if (!e.target.value.trim()) {
+                          setSelectedMemberId('');
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--border-color)',
+                      }}
+                    />
+
+                    {/* Autocomplete Suggestion Dropdown */}
+                    {showSuggestions && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          maxHeight: '220px',
+                          overflowY: 'auto',
+                          background: '#ffffff',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-md)',
+                          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+                          zIndex: 50,
+                          marginTop: '4px',
+                        }}
+                      >
+                        {filteredMembers.length > 0 ? (
+                          filteredMembers.map((m) => (
+                            <div
+                              key={m.id}
+                              onClick={() => handleSelectMember(m.id)}
+                              style={{
+                                padding: '10px 14px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid var(--border-color)',
+                                background: m.id === selectedMemberId ? 'var(--primary-bg)' : '#ffffff',
+                                color: m.id === selectedMemberId ? 'var(--primary)' : 'var(--text-main)',
+                                fontWeight: m.id === selectedMemberId ? 700 : 500,
+                              }}
+                              onMouseEnter={(e) => {
+                                if (m.id !== selectedMemberId) e.currentTarget.style.background = 'var(--bg-card-subtle)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (m.id !== selectedMemberId) e.currentTarget.style.background = '#ffffff';
+                              }}
+                            >
+                              {m.full_name} {m.disambiguator ? `(${m.disambiguator})` : ''}
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                            Không tìm thấy thành viên phù hợp
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Synchronized Dropdown Select */}
                   <select
                     value={selectedMemberId}
-                    onChange={(e) => {
-                      setSelectedMemberId(e.target.value);
-                      setCorrectionSuccessMsg('');
-                    }}
+                    onChange={(e) => handleSelectMember(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
@@ -181,7 +290,7 @@ export const ContributePage: React.FC = () => {
                     }}
                   >
                     <option value="">-- Chọn thành viên lớp --</option>
-                    {filteredMembers.map((m) => (
+                    {members.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.full_name} {m.disambiguator ? `(${m.disambiguator})` : ''}
                       </option>
@@ -223,6 +332,7 @@ export const ContributePage: React.FC = () => {
                       onClick={() => {
                         setIsCustomName(true);
                         setSelectedMemberId('');
+                        setSearchQuery('');
                       }}
                       style={{
                         background: 'none',
@@ -254,7 +364,10 @@ export const ContributePage: React.FC = () => {
                   />
                   <button
                     type="button"
-                    onClick={() => setIsCustomName(false)}
+                    onClick={() => {
+                      setIsCustomName(false);
+                      setCustomName('');
+                    }}
                     style={{
                       background: 'none',
                       border: 'none',
@@ -270,43 +383,74 @@ export const ContributePage: React.FC = () => {
               )}
             </div>
 
-            {/* Step 2: Choose Contribution Amount */}
+            {/* Step 2: Choose Contribution Amount (ONLY TWO CHOICES) */}
             <div style={{ marginBottom: '28px' }}>
-              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '10px' }}>
                 2. Chọn số tiền đóng góp
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '12px' }}>
-                {[500000, 1000000, 2000000].map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    className={`btn ${!isCustomAmount && selectedAmount === amt ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => {
-                      setSelectedAmount(amt);
-                      setIsCustomAmount(false);
-                    }}
-                  >
-                    {formatVND(amt)}
-                  </button>
-                ))}
-              </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  placeholder="Hoặc nhập số tiền khác (VNĐ)..."
-                  value={customAmountInput}
-                  onChange={(e) => {
-                    setCustomAmountInput(e.target.value);
-                    setIsCustomAmount(true);
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                {/* Option 1: Configured Suggested Amount */}
+                <button
+                  type="button"
+                  className={`btn ${!isCustomAmount ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => {
+                    setIsCustomAmount(false);
+                    setCustomAmountInput('');
                   }}
                   style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
+                    padding: '14px 10px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 'auto',
+                    borderWidth: '2px',
                   }}
-                />
+                >
+                  <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{formatVND(suggestedAmount)}</span>
+                  <span style={{ fontSize: '0.85rem', marginTop: '2px', opacity: 0.9 }}>Mức đề xuất</span>
+                </button>
+
+                {/* Option 2: Custom Amount */}
+                <div
+                  onClick={() => setIsCustomAmount(true)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: `2px solid ${isCustomAmount ? 'var(--primary)' : 'var(--border-color)'}`,
+                    background: isCustomAmount ? 'var(--card-bg)' : '#ffffff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px', color: isCustomAmount ? 'var(--primary)' : 'var(--text-main)' }}>
+                    Số tiền khác
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={customAmountInput}
+                      onFocus={() => setIsCustomAmount(true)}
+                      onChange={(e) => {
+                        setIsCustomAmount(true);
+                        setCustomAmountInput(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-color)',
+                        fontSize: '1rem',
+                        fontWeight: 700,
+                      }}
+                    />
+                    <span style={{ marginLeft: '6px', fontWeight: 700, color: 'var(--text-muted)' }}>₫</span>
+                  </div>
+                </div>
               </div>
             </div>
 

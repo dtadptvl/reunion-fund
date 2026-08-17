@@ -32,9 +32,12 @@ export const ContributorsPage: React.FC = () => {
     return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải danh sách đóng góp...</div>;
   }
 
+  const getDisplayName = (p: any) =>
+    `${p.full_name}${p.disambiguator ? ` (${p.disambiguator})` : ''}`;
+
   const allContributors = [
-    ...data.members.map((m) => ({ ...m, type: 'Thành viên lớp' })),
-    ...data.external.map((e) => ({ ...e, type: 'Khách / Người ngoài' })),
+    ...data.members.map((m) => ({ ...m, type: 'Thành viên lớp', displayName: getDisplayName(m) })),
+    ...data.external.map((e) => ({ ...e, type: 'Khách / Người ngoài', displayName: getDisplayName(e) })),
   ];
 
   return (
@@ -67,11 +70,11 @@ export const ContributorsPage: React.FC = () => {
             {allContributors.map((person) => (
               <tr
                 key={person.id}
-                onClick={() => person.contribution_count > 0 && openHistory(person.id, person.full_name)}
+                onClick={() => person.contribution_count > 0 && openHistory(person.id, person.displayName)}
                 style={{ cursor: person.contribution_count > 0 ? 'pointer' : 'default' }}
               >
                 <td>
-                  <strong style={{ color: 'var(--text-main)' }}>{person.full_name}</strong>
+                  <strong style={{ color: 'var(--text-main)' }}>{person.displayName}</strong>
                 </td>
                 <td>
                   <span className={`badge ${person.type === 'Thành viên lớp' ? 'badge-neutral' : 'badge-warning'}`}>

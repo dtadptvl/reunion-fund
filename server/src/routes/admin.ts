@@ -319,4 +319,44 @@ export async function adminRoutes(
       message: 'Đã quyết toán quỹ họp lớp thành công. Website đã chuyển sang chế độ lưu trữ.',
     };
   });
+
+  // 9. Update Suggested Contribution Amount
+  const handleUpdateSuggestedAmount = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { amount } = request.body as { amount?: number };
+    const user = (request as any).user;
+
+    if (!amount || typeof amount !== 'number' || amount <= 0 || !Number.isInteger(amount)) {
+      return reply.status(400).send({ error: 'Số tiền đề xuất phải là số nguyên dương hợp lệ' });
+    }
+
+    const prevRow = db
+      .prepare("SELECT value FROM system_state WHERE key = 'suggested_contribution_amount'")
+      .get() as { value: string } | undefined;
+    const beforeState = { suggestedAmount: prevRow ? parseInt(prevRow.value, 10) : 500000 };
+
+    db.prepare(`
+      INSERT INTO system_state (key, value, updated_at)
+      VALUES ('suggested_contribution_amount', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP
+    `).run(amount.toString(), amount.toString());
+
+    options.auditService.log({
+      actor: user.username,
+      action: 'UPDATE_SUGGESTED_AMOUNT',
+      entityType: 'SYSTEM_STATE',
+      entityId: 'suggested_contribution_amount',
+      beforeState,
+      afterState: { suggestedAmount: amount },
+      ipAddress: request.ip,
+    });
+
+    return {
+      success: true,
+      suggestedAmount: amount,
+      message: `Đã cập nhật mức đóng góp đề xuất thành ${amount.toLocaleString('vi-VN')} ₫`,
+    };
+  };
+
+  app.put('/api/v1/admin/config/suggested-amount', { preHandler: [requireAuth] }, handleUpdateSuggestedAmount);
+  app.post('/api/v1/admin/config/suggested-amount', { preHandler: [requireAuth] }, handleUpdateSuggestedAmount);
 }

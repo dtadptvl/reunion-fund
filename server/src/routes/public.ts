@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
-import { MemberService } from '../services/member.service.js';
+import { MemberService, sortVietnameseMembers } from '../services/member.service.js';
 import { ExportService } from '../services/export.service.js';
 import {
   generatePaymentCode,
@@ -38,6 +38,10 @@ export async function publicRoutes(
     const settledRow = db
       .prepare("SELECT value FROM system_state WHERE key = 'is_settled'")
       .get() as { value: string } | undefined;
+    const suggestedRow = db
+      .prepare("SELECT value FROM system_state WHERE key = 'suggested_contribution_amount'")
+      .get() as { value: string } | undefined;
+    const suggestedAmount = suggestedRow ? parseInt(suggestedRow.value, 10) : 500000;
 
     const recentContributions = db
       .prepare(`
@@ -45,7 +49,11 @@ export async function publicRoutes(
           c.id,
           c.amount,
           c.created_at,
-          COALESCE(m.full_name, ext.display_name, 'Chưa xác định') as contributor_name,
+          COALESCE(
+            CASE WHEN m.disambiguator IS NOT NULL THEN m.full_name || ' (' || m.disambiguator || ')' ELSE m.full_name END,
+            ext.display_name,
+            'Chưa xác định'
+          ) as contributor_name,
           c.contributor_type
         FROM contributions c
         LEFT JOIN members m ON c.member_id = m.id
@@ -80,8 +88,22 @@ export async function publicRoutes(
       balance: totalIncome - totalExpense,
       contributorCount: countRow.count,
       isSettled: settledRow?.value === 'true',
+      suggestedAmount: isNaN(suggestedAmount) ? 500000 : suggestedAmount,
       recentContributions,
       recentExpenses,
+    };
+  });
+
+  // 1.1 Public Global Configuration
+  app.get('/api/v1/public/config', async () => {
+    const suggestedRow = db
+      .prepare("SELECT value FROM system_state WHERE key = 'suggested_contribution_amount'")
+      .get() as { value: string } | undefined;
+    const suggestedAmount = suggestedRow ? parseInt(suggestedRow.value, 10) : 500000;
+
+    return {
+      eventTitle: config.REUNION_EVENT_TITLE,
+      suggestedAmount: isNaN(suggestedAmount) ? 500000 : suggestedAmount,
     };
   });
 
@@ -228,14 +250,22 @@ export async function publicRoutes(
         SELECT
           m.id,
           m.full_name,
+          m.disambiguator,
           COALESCE(SUM(c.amount), 0) as total_contributed,
           COUNT(c.id) as contribution_count
         FROM members m
         LEFT JOIN contributions c ON m.id = c.member_id
         GROUP BY m.id
-        ORDER BY m.full_name COLLATE NOCASE ASC
       `)
-      .all();
+      .all() as Array<{
+        id: string;
+        full_name: string;
+        disambiguator: string | null;
+        total_contributed: number;
+        contribution_count: number;
+      }>;
+
+    const sortedMembers = sortVietnameseMembers(membersWithTotals);
 
     // List all external confirmed contributors
     const externalContributors = db
@@ -248,13 +278,19 @@ export async function publicRoutes(
         FROM external_contributors ext
         JOIN contributions c ON ext.id = c.external_contributor_id
         GROUP BY ext.id
-        ORDER BY ext.display_name COLLATE NOCASE ASC
       `)
-      .all();
+      .all() as Array<{
+        id: string;
+        full_name: string;
+        total_contributed: number;
+        contribution_count: number;
+      }>;
+
+    const sortedExternal = sortVietnameseMembers(externalContributors);
 
     return {
-      members: membersWithTotals,
-      external: externalContributors,
+      members: sortedMembers,
+      external: sortedExternal,
     };
   });
 

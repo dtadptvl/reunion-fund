@@ -9,6 +9,9 @@ interface AdminDashboardProps {
 export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [exceptions, setExceptions] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
+  const [suggestedAmountInput, setSuggestedAmountInput] = useState<number>(500000);
+  const [savingAmount, setSavingAmount] = useState(false);
+  const [amountSaveMsg, setAmountSaveMsg] = useState('');
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -17,10 +20,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
     Promise.all([
       fetch('/api/v1/admin/exceptions').then((r) => r.json()),
       fetch('/api/v1/public/members').then((r) => r.json()),
+      fetch('/api/v1/public/config').then((r) => r.json()).catch(() => ({})),
     ])
-      .then(([exData, memData]) => {
+      .then(([exData, memData, cfgData]) => {
         setExceptions(exData);
         setMembers(memData.members || []);
+        if (cfgData?.suggestedAmount) {
+          setSuggestedAmountInput(cfgData.suggestedAmount);
+        }
         setLoading(false);
       })
       .catch((err) => console.error(err));
@@ -62,6 +69,29 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSaveSuggestedAmount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingAmount(true);
+    setAmountSaveMsg('');
+    try {
+      const res = await fetch('/api/v1/admin/config/suggested-amount', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: Number(suggestedAmountInput) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAmountSaveMsg(data.message || 'Đã cập nhật mức đề xuất thành công');
+      } else {
+        setAmountSaveMsg(`Lỗi: ${data.error}`);
+      }
+    } catch (err) {
+      setAmountSaveMsg('Không thể kết nối máy chủ');
+    } finally {
+      setSavingAmount(false);
     }
   };
 
@@ -114,6 +144,45 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
             <div className="stat-value">{exceptions.pendingNamesCount}</div>
           </div>
         </div>
+      </div>
+
+      {/* Configuration: Mức đóng góp đề xuất */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Cấu hình mức đóng góp đề xuất</h2>
+        </div>
+        {amountSaveMsg && (
+          <div style={{ padding: '10px 14px', background: 'var(--primary-bg)', color: 'var(--primary-text)', borderRadius: 'var(--radius-md)', marginBottom: '14px' }}>
+            {amountSaveMsg}
+          </div>
+        )}
+        <form onSubmit={handleSaveSuggestedAmount} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, marginBottom: '6px' }}>
+              Mức đóng góp đề xuất (VNĐ)
+            </label>
+            <input
+              type="number"
+              min="10000"
+              step="10000"
+              value={suggestedAmountInput}
+              onChange={(e) => setSuggestedAmountInput(Number(e.target.value))}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border-color)',
+                fontSize: '1rem',
+                fontWeight: 700,
+                width: '220px',
+              }}
+            />
+          </div>
+          <div style={{ alignSelf: 'flex-end' }}>
+            <button type="submit" className="btn btn-primary" disabled={savingAmount}>
+              {savingAmount ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Section 0: Name Correction Requests */}
