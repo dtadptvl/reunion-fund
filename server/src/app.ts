@@ -60,13 +60,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   // Providers
   const bankSyncProvider =
     options.bankSyncProvider ||
-    (config.SEPAY_ENVIRONMENT === 'sandbox' && config.SEPAY_API_TOKEN === 'placeholder_api_token'
-      ? new MockBankSyncProvider()
-      : new SePayProvider({
-          baseUrl: config.SEPAY_BASE_URL,
-          apiToken: config.SEPAY_API_TOKEN,
-          webhookSecret: config.SEPAY_WEBHOOK_SECRET,
-        }));
+    new SePayProvider({
+      baseUrl: config.SEPAY_BASE_URL,
+      apiToken: config.SEPAY_API_TOKEN,
+      webhookSecret: config.SEPAY_WEBHOOK_SECRET,
+    });
 
   const aiProvider =
     options.aiProvider ||
