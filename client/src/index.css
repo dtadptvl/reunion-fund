@@ -320,11 +320,124 @@ button, input, select, textarea {
   gap: 12px;
 }
 
-/* Responsive */
-@media (max-width: 640px) {
-  .hero-balance { font-size: 2.2rem; }
-  .hero-title { font-size: 1.6rem; }
-  .navbar-inner { flex-direction: column; gap: 12px; }
-  .nav-links { width: 100%; justify-content: center; overflow-x: auto; }
-  .footer-inner { flex-direction: column; text-align: center; }
+/* Visibility Utilities */
+.desktop-only {
+  display: block;
 }
+
+.mobile-only {
+  display: none;
+}
+
+.income-cards-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.income-card-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.income-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.income-card-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 90px;
+}
+
+.receipt-item-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.receipt-filename {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Responsive Rules for Mobile (approx 375px - 768px) */
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: block !important;
+  }
+
+  .navbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+
+  .brand-logo {
+    justify-content: center;
+    text-align: center;
+    font-size: 1.05rem;
+    white-space: nowrap;
+  }
+
+  .nav-links {
+    width: 100%;
+    display: flex;
+    gap: 6px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .hero-balance {
+    font-size: 2.2rem;
+  }
+  .hero-title {
+    font-size: 1.6rem;
+  }
+  .footer-inner {
+    flex-direction: column;
+    text-align: center;
+  }
+  .receipt-filename {
+    max-width: 130px;
+  }
+}
+

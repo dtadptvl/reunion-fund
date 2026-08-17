@@ -22,6 +22,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const MATCH_METHOD_LABELS: Record<string, string> = {
   EXACT_PAYMENT_CODE: 'Khớp mã thanh toán',
   DETERMINISTIC_NAME_FALLBACK: 'Khớp tên tự động',
+  MANUAL_TREASURER_ASSIGNMENT: 'Thủ quỹ chỉ định',
   MANUAL_ASSIGNMENT: 'Thủ quỹ chỉ định',
   UNRESOLVED: 'Chưa xác định',
 };
@@ -41,6 +42,17 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
   const [uploadingExpenseId, setUploadingExpenseId] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<{ id: string; type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  // Expense Edit/Review Modal State
+  const [editingExpense, setEditingExpense] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({
+    vietnameseTitle: '',
+    category: 'FOOD',
+    recipientName: '',
+    notes: '',
+  });
+  const [savingExpense, setSavingExpense] = useState(false);
+  const [editExpenseError, setEditExpenseError] = useState('');
 
   const loadData = () => {
     Promise.all([
@@ -100,6 +112,26 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
     }
   };
 
+  const handleUnassignContribution = async (contributionId: string) => {
+    if (!window.confirm('Bạn có chắc muốn hoàn tác việc gán khoản thu này?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/v1/admin/contributions/${contributionId}/unassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(`Lỗi: ${data.error}`);
+      }
+    } catch {
+      alert('Không thể kết nối máy chủ để hoàn tác gán');
+    }
+  };
+
   const handleSaveSuggestedAmount = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingAmount(true);
@@ -120,6 +152,50 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       setAmountSaveMsg('Không thể kết nối máy chủ');
     } finally {
       setSavingAmount(false);
+    }
+  };
+
+  const handleOpenEditExpense = (expense: any) => {
+    setEditingExpense(expense);
+    setEditForm({
+      vietnameseTitle: expense.title || '',
+      category: expense.category === 'UNKNOWN' ? 'FOOD' : expense.category,
+      recipientName: expense.recipient_name || '',
+      notes: expense.notes || '',
+    });
+    setEditExpenseError('');
+  };
+
+  const handleSaveExpenseReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+
+    setSavingExpense(true);
+    setEditExpenseError('');
+
+    try {
+      const res = await fetch(`/api/v1/admin/expenses/${editingExpense.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vietnameseTitle: editForm.vietnameseTitle,
+          category: editForm.category,
+          recipientName: editForm.recipientName || undefined,
+          notes: editForm.notes || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setEditingExpense(null);
+        loadData();
+      } else {
+        setEditExpenseError(data.error || 'Lỗi khi cập nhật thông tin khoản chi');
+      }
+    } catch {
+      setEditExpenseError('Không thể kết nối máy chủ để lưu thông tin');
+    } finally {
+      setSavingExpense(false);
     }
   };
 
@@ -196,14 +272,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
     <div>
       {/* 1. Header & Quick Actions */}
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 className="card-title">Bảng Điều Khiển Thủ Quỹ</h1>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
               Xin chào, <strong>{user?.fullName || user?.username}</strong>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={handleSyncSePay} disabled={syncing}>
               {syncing ? 'Đang đồng bộ...' : '🔄 Đồng bộ SePay ngay'}
             </button>
@@ -286,6 +362,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
                 fontSize: '1rem',
                 fontWeight: 700,
                 width: '220px',
+                maxWidth: '100%',
               }}
             />
           </div>
@@ -303,67 +380,69 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           <div className="card-header">
             <h2 className="card-title">Yêu cầu sửa tên thành viên lớp</h2>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Tên hiện tại</th>
-                <th>Tên yêu cầu sửa</th>
-                <th>Ghi chú</th>
-                <th>Thời gian</th>
-                <th style={{ textAlign: 'right' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {exceptions.pendingCorrections.map((item: any) => (
-                <tr key={item.id}>
-                  <td>
-                    <strong>{item.current_name}</strong>
-                  </td>
-                  <td style={{ color: 'var(--primary)', fontWeight: 600 }}>
-                    {item.requested_name}
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {item.notes || 'Không có ghi chú'}
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {formatDateVN(item.created_at)}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
-                        onClick={async () => {
-                          await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'APPROVE' }),
-                          });
-                          loadData();
-                        }}
-                      >
-                        ✓ Duyệt
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
-                        onClick={async () => {
-                          await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'REJECT' }),
-                          });
-                          loadData();
-                        }}
-                      >
-                        ✕ Từ chối
-                      </button>
-                    </div>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Tên hiện tại</th>
+                  <th>Tên yêu cầu sửa</th>
+                  <th>Ghi chú</th>
+                  <th>Thời gian</th>
+                  <th style={{ textAlign: 'right' }}>Thao tác</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {exceptions.pendingCorrections.map((item: any) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>{item.current_name}</strong>
+                    </td>
+                    <td style={{ color: 'var(--primary)', fontWeight: 600 }}>
+                      {item.requested_name}
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {item.notes || 'Không có ghi chú'}
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {formatDateVN(item.created_at)}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                          onClick={async () => {
+                            await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'APPROVE' }),
+                            });
+                            loadData();
+                          }}
+                        >
+                          ✓ Duyệt
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                          onClick={async () => {
+                            await fetch(`/api/v1/admin/name-corrections/${item.id}/review`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'REJECT' }),
+                            });
+                            loadData();
+                          }}
+                        >
+                          ✕ Từ chối
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -373,41 +452,43 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           <div className="card-header">
             <h2 className="card-title">Khoản thu chưa xác định được người đóng</h2>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Thời gian</th>
-                <th>Số tiền</th>
-                <th>Nội dung chuyển khoản</th>
-                <th>Gán vào thành viên</th>
-              </tr>
-            </thead>
-            <tbody>
-              {exceptions.unresolvedIncome.map((item: any) => (
-                <tr key={item.id}>
-                  <td>{formatDateVN(item.created_at)}</td>
-                  <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{formatVND(item.amount)}</td>
-                  <td>
-                    <code>{item.content || item.description}</code>
-                  </td>
-                  <td>
-                    <select
-                      onChange={(e) => handleAssignContribution(item.id, e.target.value)}
-                      defaultValue=""
-                      style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}
-                    >
-                      <option value="">-- Chọn thành viên --</option>
-                      {members.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.disambiguator ? `${m.full_name} (${m.disambiguator})` : m.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Số tiền</th>
+                  <th>Nội dung chuyển khoản</th>
+                  <th>Gán vào thành viên</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {exceptions.unresolvedIncome.map((item: any) => (
+                  <tr key={item.id}>
+                    <td>{formatDateVN(item.created_at)}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{formatVND(item.amount)}</td>
+                    <td>
+                      <code>{item.content || item.description}</code>
+                    </td>
+                    <td>
+                      <select
+                        onChange={(e) => handleAssignContribution(item.id, e.target.value)}
+                        defaultValue=""
+                        style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', maxWidth: '100%' }}
+                      >
+                        <option value="">-- Chọn thành viên --</option>
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.disambiguator ? `${m.full_name} (${m.disambiguator})` : m.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -419,43 +500,113 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
             Tổng cộng: <strong>{financials?.contributions?.length || 0}</strong> lượt đóng góp
           </div>
         </div>
+
         {financials?.contributions?.length > 0 ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Người đóng</th>
-                <th>Số tiền</th>
-                <th>Thời gian</th>
-                <th>Trạng thái / Cách đối chiếu</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop Table View */}
+            <div className="desktop-only" style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Người đóng</th>
+                    <th>Số tiền</th>
+                    <th>Thời gian</th>
+                    <th>Trạng thái / Cách đối chiếu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {financials.contributions.map((c: any) => (
+                    <tr key={c.id}>
+                      <td>
+                        <strong>{c.contributor_name}</strong>
+                        {c.contributor_type === 'EXTERNAL' && (
+                          <span className="badge badge-outline" style={{ marginLeft: '8px', fontSize: '0.75rem' }}>Khách mời</span>
+                        )}
+                        {c.contributor_type === 'UNRESOLVED' && (
+                          <span className="badge badge-warning" style={{ marginLeft: '8px', fontSize: '0.75rem' }}>Chưa khớp</span>
+                        )}
+                      </td>
+                      <td style={{ fontWeight: 700, color: 'var(--income)' }}>
+                        +{formatVND(c.amount)}
+                      </td>
+                      <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {formatDateVN(c.created_at)}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="badge badge-neutral" style={{ fontSize: '0.8rem' }}>
+                            {MATCH_METHOD_LABELS[c.match_method] || c.match_method || 'Hoàn tất'}
+                          </span>
+                          {(c.match_method === 'MANUAL_TREASURER_ASSIGNMENT' || c.match_method === 'MANUAL_ASSIGNMENT') && (
+                            <button
+                              className="btn btn-outline"
+                              style={{ fontSize: '0.75rem', padding: '2px 8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                              onClick={() => handleUnassignContribution(c.id)}
+                              title="Hoàn tác gán khoản thu này về trạng thái chưa xác định"
+                            >
+                              ↩️ Hoàn tác gán
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Stacked Card View */}
+            <div className="mobile-only income-cards-mobile">
               {financials.contributions.map((c: any) => (
-                <tr key={c.id}>
-                  <td>
-                    <strong>{c.contributor_name}</strong>
-                    {c.contributor_type === 'EXTERNAL' && (
-                      <span className="badge badge-outline" style={{ marginLeft: '8px', fontSize: '0.75rem' }}>Khách mời</span>
-                    )}
-                    {c.contributor_type === 'UNRESOLVED' && (
-                      <span className="badge badge-warning" style={{ marginLeft: '8px', fontSize: '0.75rem' }}>Chưa khớp</span>
-                    )}
-                  </td>
-                  <td style={{ fontWeight: 700, color: 'var(--income)' }}>
-                    +{formatVND(c.amount)}
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {formatDateVN(c.created_at)}
-                  </td>
-                  <td>
-                    <span className="badge badge-neutral" style={{ fontSize: '0.8rem' }}>
-                      {MATCH_METHOD_LABELS[c.match_method] || c.match_method || 'Hoàn tất'}
+                <div key={c.id} className="income-card-item">
+                  <div className="income-card-row">
+                    <span className="income-card-label">Người đóng:</span>
+                    <strong style={{ textAlign: 'right' }}>
+                      {c.contributor_name}
+                      {c.contributor_type === 'EXTERNAL' && (
+                        <span className="badge badge-outline" style={{ marginLeft: '6px', fontSize: '0.7rem' }}>Khách mời</span>
+                      )}
+                      {c.contributor_type === 'UNRESOLVED' && (
+                        <span className="badge badge-warning" style={{ marginLeft: '6px', fontSize: '0.7rem' }}>Chưa khớp</span>
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="income-card-row">
+                    <span className="income-card-label">Số tiền:</span>
+                    <strong style={{ color: 'var(--income)', fontSize: '1rem' }}>
+                      +{formatVND(c.amount)}
+                    </strong>
+                  </div>
+
+                  <div className="income-card-row">
+                    <span className="income-card-label">Thời gian:</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      {formatDateVN(c.created_at)}
                     </span>
-                  </td>
-                </tr>
+                  </div>
+
+                  <div className="income-card-row" style={{ alignItems: 'center' }}>
+                    <span className="income-card-label">Trạng thái / đối chiếu:</span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <span className="badge badge-neutral" style={{ fontSize: '0.75rem' }}>
+                        {MATCH_METHOD_LABELS[c.match_method] || c.match_method || 'Hoàn tất'}
+                      </span>
+                      {(c.match_method === 'MANUAL_TREASURER_ASSIGNMENT' || c.match_method === 'MANUAL_ASSIGNMENT') && (
+                        <button
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '2px 8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          onClick={() => handleUnassignContribution(c.id)}
+                        >
+                          ↩️ Hoàn tác gán
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         ) : (
           <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
             Chưa có khoản thu nào được ghi nhận.
@@ -471,150 +622,154 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
             Tổng cộng: <strong>{financials?.expenses?.length || 0}</strong> khoản chi
           </div>
         </div>
+
         {financials?.expenses?.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {financials.expenses.map((e: any) => (
-              <div
-                key={e.id}
-                style={{
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '16px',
-                  background: '#fff',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-main)' }}>{e.title}</h3>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
-                      <span className="badge badge-neutral">{CATEGORY_LABELS[e.category] || e.category}</span>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{formatDateVN(e.created_at)}</span>
-                      {e.recipient_name && (
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Người nhận: <strong>{e.recipient_name}</strong></span>
-                      )}
+            {financials.expenses.map((e: any) => {
+              const isNeedsReview = e.needs_review || e.category === 'UNKNOWN';
+              return (
+                <div
+                  key={e.id}
+                  style={{
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '16px',
+                    background: '#fff',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ maxWidth: '100%' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-main)', wordBreak: 'break-word' }}>{e.title}</h3>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <span className="badge badge-neutral">{CATEGORY_LABELS[e.category] || e.category}</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{formatDateVN(e.created_at)}</span>
+                        {e.recipient_name && (
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Người nhận: <strong>{e.recipient_name}</strong></span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--expense)' }}>
-                      -{formatVND(e.amount)}
-                    </div>
-                    <div>
-                      {e.needs_review ? (
-                        <span className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: '4px' }}>Cần bổ sung thông tin</span>
-                      ) : (
-                        <span className="badge badge-success" style={{ fontSize: '0.75rem', marginTop: '4px' }}>✓ Đã phân loại</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sub-section: Chứng từ / Hóa đơn */}
-                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                    <strong style={{ fontSize: '0.9rem' }}>Chứng từ / Hóa đơn:</strong>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Chứng từ này sẽ được hiển thị công khai.
-                    </span>
-                  </div>
-
-                  {/* Upload message feedback */}
-                  {uploadMessage && uploadMessage.id === e.id && (
-                    <div
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.85rem',
-                        marginBottom: '10px',
-                        background: uploadMessage.type === 'success' ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)',
-                        color: uploadMessage.type === 'success' ? '#2e7d32' : '#d32f2f',
-                      }}
-                    >
-                      {uploadMessage.text}
-                    </div>
-                  )}
-
-                  {/* Existing attachments list */}
-                  {e.attachments && e.attachments.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
-                      {e.attachments.map((att: any) => {
-                        const isPdf = att.mime_type === 'application/pdf';
-                        const fileUrl = `/api/v1/public/attachments/${att.id}`;
-                        return (
-                          <div
-                            key={att.id}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              padding: '6px 10px',
-                              background: 'var(--bg-card)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: 'var(--radius-sm)',
-                              fontSize: '0.85rem',
-                            }}
-                          >
-                            {isPdf ? (
-                              <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'var(--primary)' }}>
-                                📄 {att.original_name}
-                              </a>
-                            ) : (
-                              <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--text-main)' }}>
-                                <img
-                                  src={fileUrl}
-                                  alt={att.original_name}
-                                  style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '3px' }}
-                                />
-                                <span>{att.original_name}</span>
-                              </a>
-                            )}
+                    <div style={{ textAlign: 'right', minWidth: '120px' }}>
+                      <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--expense)' }}>
+                        -{formatVND(e.amount)}
+                      </div>
+                      <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                        {isNeedsReview ? (
+                          <>
+                            <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>Cần bổ sung thông tin</span>
                             <button
-                              className="btn btn-danger"
-                              style={{ padding: '2px 6px', fontSize: '0.75rem', marginLeft: '4px' }}
-                              title="Xóa chứng từ này"
-                              onClick={() => handleDeleteReceipt(att.id, att.original_name)}
+                              className="btn btn-primary"
+                              style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                              onClick={() => handleOpenEditExpense(e)}
                             >
-                              ✕ Xóa
+                              ✏️ Bổ sung thông tin
                             </button>
-                          </div>
-                        );
-                      })}
+                          </>
+                        ) : (
+                          <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>✓ Đã phân loại</span>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                      Chưa có chứng từ nào được tải lên cho khoản chi này.
-                    </div>
-                  )}
+                  </div>
 
-                  {/* Upload Controls */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <input
-                      type="file"
-                      ref={(el) => (fileInputRefs.current[e.id] = el)}
-                      accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
-                      multiple
-                      style={{ display: 'none' }}
-                      id={`file-upload-${e.id}`}
-                      onChange={(ev) => handleUploadReceipts(e.id, ev.target.files)}
-                      disabled={uploadingExpenseId === e.id}
-                    />
-                    <label
-                      htmlFor={`file-upload-${e.id}`}
-                      className="btn btn-outline"
-                      style={{
-                        cursor: uploadingExpenseId === e.id ? 'not-allowed' : 'pointer',
-                        fontSize: '0.85rem',
-                        padding: '6px 12px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      {uploadingExpenseId === e.id ? '⏳ Đang tải lên...' : '📤 Tải lên chứng từ / hóa đơn (JPG, PNG, WebP, PDF)'}
-                    </label>
+                  {/* Sub-section: Chứng từ / Hóa đơn */}
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                      <strong style={{ fontSize: '0.9rem' }}>Chứng từ / Hóa đơn:</strong>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Chứng từ này sẽ được hiển thị công khai.
+                      </span>
+                    </div>
+
+                    {/* Upload message feedback */}
+                    {uploadMessage && uploadMessage.id === e.id && (
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.85rem',
+                          marginBottom: '10px',
+                          background: uploadMessage.type === 'success' ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)',
+                          color: uploadMessage.type === 'success' ? '#2e7d32' : '#d32f2f',
+                        }}
+                      >
+                        {uploadMessage.text}
+                      </div>
+                    )}
+
+                    {/* Existing attachments list */}
+                    {e.attachments && e.attachments.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                        {e.attachments.map((att: any) => {
+                          const isPdf = att.mime_type === 'application/pdf';
+                          const fileUrl = `/api/v1/public/attachments/${att.id}`;
+                          return (
+                            <div key={att.id} className="receipt-item-box">
+                              {isPdf ? (
+                                <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>📄</span>
+                                  <span className="receipt-filename" title={att.original_name}>{att.original_name}</span>
+                                </a>
+                              ) : (
+                                <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--text-main)' }}>
+                                  <img
+                                    src={fileUrl}
+                                    alt={att.original_name}
+                                    style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '3px', flexShrink: 0 }}
+                                  />
+                                  <span className="receipt-filename" title={att.original_name}>{att.original_name}</span>
+                                </a>
+                              )}
+                              <button
+                                className="btn btn-danger"
+                                style={{ padding: '2px 6px', fontSize: '0.75rem', marginLeft: '4px', flexShrink: 0 }}
+                                title="Xóa chứng từ này"
+                                onClick={() => handleDeleteReceipt(att.id, att.original_name)}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                        Chưa có chứng từ nào được tải lên cho khoản chi này.
+                      </div>
+                    )}
+
+                    {/* Upload Controls */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <input
+                        type="file"
+                        ref={(el) => (fileInputRefs.current[e.id] = el)}
+                        accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+                        multiple
+                        style={{ display: 'none' }}
+                        id={`file-upload-${e.id}`}
+                        onChange={(ev) => handleUploadReceipts(e.id, ev.target.files)}
+                        disabled={uploadingExpenseId === e.id}
+                      />
+                      <label
+                        htmlFor={`file-upload-${e.id}`}
+                        className="btn btn-outline"
+                        style={{
+                          cursor: uploadingExpenseId === e.id ? 'not-allowed' : 'pointer',
+                          fontSize: '0.85rem',
+                          padding: '6px 12px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {uploadingExpenseId === e.id ? '⏳ Đang tải lên...' : '📤 Tải lên chứng từ / hóa đơn (JPG, PNG, WebP, PDF)'}
+                      </label>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
@@ -622,6 +777,172 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           </div>
         )}
       </div>
+
+      {/* 7. Modal: Bổ sung thông tin khoản chi */}
+      {editingExpense && (
+        <div
+          onClick={() => setEditingExpense(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              padding: '24px',
+              borderRadius: 'var(--radius-lg)',
+              maxWidth: '540px',
+              width: '100%',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Bổ sung thông tin khoản chi</h3>
+              <button
+                className="btn btn-outline"
+                style={{ padding: '2px 8px', fontSize: '0.85rem' }}
+                onClick={() => setEditingExpense(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '10px 14px', background: 'var(--bg-card-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '16px', fontSize: '0.85rem' }}>
+              <div>Số tiền: <strong style={{ color: 'var(--expense)' }}>-{formatVND(editingExpense.amount)}</strong></div>
+              <div>Thời gian: <strong>{formatDateVN(editingExpense.created_at)}</strong></div>
+            </div>
+
+            {editExpenseError && (
+              <div style={{ padding: '8px 12px', background: 'var(--danger-bg)', color: 'var(--danger-text)', borderRadius: 'var(--radius-sm)', marginBottom: '14px', fontSize: '0.85rem' }}>
+                {editExpenseError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveExpenseReview}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Nội dung khoản chi <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.vietnameseTitle}
+                  onChange={(e) => setEditForm({ ...editForm, vietnameseTitle: e.target.value })}
+                  placeholder="Ví dụ: Đặt cọc nhà hàng, Nước uống họp lớp..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Danh mục chi tiêu <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <select
+                  value={editForm.category}
+                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <option value="FOOD">Ẩm thực / Tiệc</option>
+                  <option value="GIFT_TEACHER">Quà tri ân thầy cô</option>
+                  <option value="FLOWERS">Hoa tươi</option>
+                  <option value="PHOTO_VIDEO">Quay phim / Chụp ảnh</option>
+                  <option value="PRINTING">In ấn kỷ yếu / Băng rôn</option>
+                  <option value="TRANSPORT">Phương tiện / Đi lại</option>
+                  <option value="REFUND">Hoàn tiền</option>
+                  <option value="FUND_TRANSFER">Chuyển quỹ lớp</option>
+                  <option value="OTHER">Chi phí khác</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Người / Đơn vị nhận tiền (tùy chọn)
+                </label>
+                <input
+                  type="text"
+                  value={editForm.recipientName}
+                  onChange={(e) => setEditForm({ ...editForm, recipientName: e.target.value })}
+                  placeholder="Tên nhà hàng, quán nước, người nhận..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Ghi chú bổ sung (tùy chọn)
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  placeholder="Ghi chú chi tiết cho thủ quỹ và tập thể lớp..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setEditingExpense(null)}
+                  disabled={savingExpense}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingExpense}
+                >
+                  {savingExpense ? 'Đang lưu...' : 'Lưu thông tin'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

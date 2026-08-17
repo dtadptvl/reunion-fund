@@ -48,6 +48,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab }) => {
           >
             Quyết toán
           </button>
+          <button
+            className={`btn-link nav-link ${currentTab === 'admin' || currentTab === 'login' ? 'active' : ''}`}
+            onClick={() => onSelectTab('admin')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            Quản trị
+          </button>
         </nav>
       </div>
     </header>

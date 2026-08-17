@@ -253,6 +253,50 @@ export async function adminRoutes(
     return { success: true };
   });
 
+  // 5.1 Undo / Unassign Contribution
+  app.post('/api/v1/admin/contributions/:id/unassign', { preHandler: [requireAuth] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = (request as any).user;
+
+    const contribution = db.prepare('SELECT * FROM contributions WHERE id = ?').get(id) as any;
+    if (!contribution) {
+      return reply.status(404).send({ error: 'Không tìm thấy khoản thu' });
+    }
+
+    let originalName = contribution.unresolved_name;
+    if (!originalName && contribution.bank_transaction_id) {
+      const bankTx = db.prepare('SELECT content, description FROM bank_transactions WHERE id = ?').get(contribution.bank_transaction_id) as any;
+      if (bankTx) {
+        originalName = bankTx.content || bankTx.description;
+      }
+    }
+
+    db.prepare(`
+      UPDATE contributions SET
+        contributor_type = 'UNRESOLVED',
+        member_id = NULL,
+        external_contributor_id = NULL,
+        match_method = 'UNRESOLVED',
+        unresolved_name = ?,
+        reviewed_by = ?,
+        notes = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(originalName || 'Chưa xác định', user.username, id);
+
+    options.auditService.log({
+      actor: user.username,
+      action: 'UNASSIGN_CONTRIBUTION',
+      entityType: 'CONTRIBUTION',
+      entityId: id,
+      beforeState: contribution,
+      afterState: { contributor_type: 'UNRESOLVED', member_id: null, match_method: 'UNRESOLVED', unresolved_name: originalName },
+      ipAddress: request.ip,
+    });
+
+    return { success: true, message: 'Đã hoàn tác gán khoản thu thành công' };
+  });
+
   // 6. Update Expense Details & Category
   const handleUpdateExpense = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };

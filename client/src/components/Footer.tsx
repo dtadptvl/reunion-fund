@@ -13,7 +13,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
         </div>
         <div>
           <button
-            onClick={() => onSelectTab('login')}
+            onClick={() => onSelectTab('admin')}
             style={{
               background: 'none',
               border: 'none',
@@ -23,7 +23,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
               textDecoration: 'underline',
             }}
           >
-            Quản trị thủ quỹ
+            Quản trị
           </button>
         </div>
       </div>
