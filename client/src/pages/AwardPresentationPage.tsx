@@ -9,6 +9,7 @@ interface AwardPresentationItem {
     memberId: string;
     fullName: string;
     disambiguator: string | null;
+    voteCount?: number;
   } | null;
 }
 
@@ -273,6 +274,24 @@ export const AwardPresentationPage: React.FC<AwardPresentationPageProps> = ({ on
                   </span>
                 )}
               </div>
+
+              {currentAward.winner && typeof currentAward.winner.voteCount === 'number' && (
+                <div
+                  style={{
+                    background: 'rgba(234, 179, 8, 0.25)',
+                    border: '1px solid #facc15',
+                    borderRadius: '20px',
+                    padding: '6px 20px',
+                    fontSize: '1.25rem',
+                    fontWeight: 800,
+                    color: '#fef08a',
+                    marginTop: '6px',
+                    animation: 'fadeInUp 0.8s ease',
+                  }}
+                >
+                  🎉 {currentAward.winner.voteCount} phiếu bình chọn
+                </div>
+              )}
             </div>
           )}
         </div>

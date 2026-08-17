@@ -295,7 +295,7 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     expect(adminRes.status).toBe(200);
     expect(adminRes.body.categories).toHaveLength(3);
 
-    // Presentation endpoint also 200 for Admin
+    // Presentation endpoint also 200 for Admin and returns winner voteCount
     const presRes = await supertest(app.server)
       .get('/api/v1/admin/voting/presentation')
       .set('Cookie', adminCookie);
@@ -303,11 +303,17 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     expect(presRes.body.awards).toHaveLength(3);
   });
 
-  it('8. Public vote counts endpoint exposes candidate counts but never leaks voter identities', async () => {
+  it('8. Confidential Vote Counts: Guests and Members cannot read candidate counts, Presentation reveals winner voteCount', async () => {
     const members = memberService.searchMembers('', 10);
     const voter1 = members[0];
     const voter2 = members[1];
     const candidateA = members[2];
+
+    // Add confirmed contribution so candidateA is eligible
+    db.prepare(`
+      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
+      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
+    `).run(crypto.randomUUID(), candidateA.id);
 
     // Create 2 voters
     await authService.registerMemberAccount(voter1.id, 'pv1', 'pv1@example.com', 'pwd');
@@ -318,38 +324,45 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('pv2@example.com')!.token);
     const u2 = (await authService.authenticate('pv2', 'pwd')).user!;
 
-    // Initial public vote count for candidateA must be 0
-    let pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
-    expect(pubRes.status).toBe(200);
-    expect(pubRes.body.categories).toHaveLength(3);
+    // 1. Guest request to public voting counts -> 404 (endpoint removed)
+    const pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
+    expect(pubRes.status).toBe(404);
 
-    const cat1 = pubRes.body.categories.find((c: any) => c.id === 'dang-quy-nhat')!;
-    const candEntry = cat1.candidates.find((c: any) => c.member_id === candidateA.id)!;
-    expect(candEntry.vote_count).toBe(0);
-
-    // Voter 1 votes for candidateA
+    // 2. Member casts vote
     votingService.castVotes(u1.id, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv1');
-
-    // Public count updates to 1
-    pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
-    const candEntryAfter1 = pubRes.body.categories.find((c: any) => c.id === 'dang-quy-nhat')!.candidates.find((c: any) => c.member_id === candidateA.id)!;
-    expect(candEntryAfter1.vote_count).toBe(1);
-
-    // Voter 2 also votes for candidateA
     votingService.castVotes(u2.id, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv2');
 
-    // Public count updates to 2
-    pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
-    const candEntryAfter2 = pubRes.body.categories.find((c: any) => c.id === 'dang-quy-nhat')!.candidates.find((c: any) => c.member_id === candidateA.id)!;
-    expect(candEntryAfter2.vote_count).toBe(2);
+    // 3. Member /api/v1/auth/votes response contains user's own vote, but NO candidate vote counts
+    const memberLogin = await supertest(app.server).post('/api/v1/auth/login').send({
+      username: 'pv1',
+      password: 'pwd',
+    });
+    const memberCookie = memberLogin.headers['set-cookie'];
 
-    // Strict Privacy Assertion: check entire JSON response structure
-    const jsonStr = JSON.stringify(pubRes.body);
-    expect(jsonStr).not.toContain('pv1');
-    expect(jsonStr).not.toContain('pv2');
-    expect(jsonStr).not.toContain('pv1@example.com');
-    expect(jsonStr).not.toContain('voter_user_id');
-    expect(jsonStr).not.toContain('voter_member_id');
-    expect(jsonStr).not.toContain('voter_account');
+    const memberVotesRes = await supertest(app.server)
+      .get('/api/v1/auth/votes')
+      .set('Cookie', memberCookie);
+    expect(memberVotesRes.status).toBe(200);
+    expect(memberVotesRes.body.userVotes['dang-quy-nhat']).toBe(candidateA.id);
+    expect(JSON.stringify(memberVotesRes.body)).not.toContain('vote_count');
+    expect(JSON.stringify(memberVotesRes.body)).not.toContain('total_votes');
+
+    // 4. Admin presentation endpoint contains winner voteCount (2 votes)
+    const tuanAnh = memberService.searchMembers('Dương Tuấn Anh', 10).find((m) => m.full_name === 'Dương Tuấn Anh')!;
+    await authService.registerMemberAccount(tuanAnh.id, 'admin_pres', 'admin_pres@example.com', 'pwd');
+    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('admin_pres@example.com')!.token);
+    const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
+      username: 'admin_pres',
+      password: 'pwd',
+    });
+    const adminCookie = adminLogin.headers['set-cookie'];
+
+    const presRes = await supertest(app.server)
+      .get('/api/v1/admin/voting/presentation')
+      .set('Cookie', adminCookie);
+    expect(presRes.status).toBe(200);
+    const award1 = presRes.body.awards.find((a: any) => a.categoryId === 'dang-quy-nhat');
+    expect(award1.winner.memberId).toBe(candidateA.id);
+    expect(award1.winner.voteCount).toBe(2);
   });
 });
