@@ -158,11 +158,11 @@ describe('Phase 3B — SePay Test Mode Verification Suite', () => {
     });
 
     it('Case B: matches canonical member name in content with DONGQUY keyword', async () => {
-      const member = memberService.searchMembers('Dương Ngọc Bích', 1)[0]!;
+      const member = memberService.searchMembers('Nguyễn Thị Bích', 1)[0]!;
       const result: any = await insertAndProcessTx({
         id: 'tx-case-b',
         sepay_id: 90002,
-        content: 'DUONG NGOC BICH DONGQUY HOB KHOA 10 NAM',
+        content: 'NGUYEN THI BICH DONGQUY HOB KHOA 10 NAM',
         transfer_amount: 500000,
         transfer_type: 'in',
       });

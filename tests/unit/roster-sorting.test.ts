@@ -29,7 +29,7 @@ describe('Canonical 40-Member Roster & Vietnamese Given-Name Sorting', () => {
   it('extracts Vietnamese given name correctly ignoring parenthetical disambiguators', () => {
     expect(extractGivenName('Dương Tuấn Anh')).toBe('Anh');
     expect(extractGivenName('Nguyễn Vân Anh')).toBe('Anh');
-    expect(extractGivenName('Dương Ngọc Bích')).toBe('Bích');
+    expect(extractGivenName('Nguyễn Thị Bích')).toBe('Bích');
     expect(extractGivenName('Sái Văn Độ')).toBe('Độ');
     expect(extractGivenName('Lê Thiết Giáp')).toBe('Giáp');
     expect(extractGivenName('Nguyễn Thị Huế (Lạc Đạo)')).toBe('Huế');
@@ -47,7 +47,7 @@ describe('Canonical 40-Member Roster & Vietnamese Given-Name Sorting', () => {
     expect(firstTwo.map((m) => m.full_name)).toEqual(['Dương Tuấn Anh', 'Nguyễn Vân Anh']);
 
     const nextTwo = sorted.slice(2, 4);
-    expect(nextTwo.map((m) => m.full_name)).toEqual(['Dương Ngọc Bích', 'Dương Thành Bích']);
+    expect(nextTwo.map((m) => m.full_name)).toEqual(['Dương Thành Bích', 'Nguyễn Thị Bích']);
 
     const lastOne = sorted[sorted.length - 1];
     expect(lastOne?.full_name).toBe('Nguyễn Thị Viển');

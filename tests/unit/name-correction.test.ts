@@ -98,7 +98,7 @@ describe('Name Correction Feature Workflow', () => {
   });
 
   it('allows treasurer to reject name correction request, preserving canonical name and recording history', () => {
-    const member = memberService.searchMembers('Dương Ngọc Bích', 1)[0];
+    const member = memberService.searchMembers('Nguyễn Thị Bích', 1)[0];
 
     const req = memberService.createNameCorrectionRequest(
       member.id,
@@ -112,7 +112,7 @@ describe('Name Correction Feature Workflow', () => {
 
     // Member name remains untouched
     const memberAfter = db.prepare('SELECT * FROM members WHERE id = ?').get(member.id) as any;
-    expect(memberAfter.full_name).toBe('Dương Ngọc Bích');
+    expect(memberAfter.full_name).toBe('Nguyễn Thị Bích');
 
     // Request status is REJECTED
     const reqAfter = db.prepare('SELECT * FROM name_correction_requests WHERE id = ?').get(req.id) as any;

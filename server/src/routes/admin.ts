@@ -497,4 +497,60 @@ export async function adminRoutes(
 
   app.put('/api/v1/admin/config/suggested-amount', { preHandler: [requireAuth] }, handleUpdateSuggestedAmount);
   app.post('/api/v1/admin/config/suggested-amount', { preHandler: [requireAuth] }, handleUpdateSuggestedAmount);
+
+  // 10. Financial Overview & Detailed Lists for Treasurer Dashboard
+  app.get('/api/v1/admin/financials', { preHandler: [requireAuth] }, async () => {
+    const incomeRow = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM contributions').get() as { total: number };
+    const expenseRow = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM expenses').get() as { total: number };
+    const totalIncome = incomeRow.total;
+    const totalExpense = expenseRow.total;
+    const balance = totalIncome - totalExpense;
+
+    const contributions = db.prepare(`
+      SELECT 
+        c.id,
+        c.amount,
+        c.created_at,
+        c.match_method,
+        c.contributor_type,
+        c.unresolved_name,
+        COALESCE(
+          CASE 
+            WHEN m.disambiguator IS NOT NULL AND m.disambiguator != '' 
+            THEN m.full_name || ' (' || m.disambiguator || ')'
+            ELSE m.full_name 
+          END,
+          ext.display_name,
+          c.unresolved_name,
+          'Chưa xác định'
+        ) as contributor_name
+      FROM contributions c
+      LEFT JOIN members m ON c.member_id = m.id
+      LEFT JOIN external_contributors ext ON c.external_contributor_id = ext.id
+      ORDER BY c.created_at DESC
+    `).all();
+
+    const expenses = db.prepare(`
+      SELECT 
+        e.id,
+        e.amount,
+        e.category,
+        COALESCE(e.vietnamese_title, e.title, 'Chưa rõ mục đích') as title,
+        e.recipient_name,
+        e.created_at,
+        e.classification_source,
+        CASE WHEN e.category = 'UNKNOWN' OR e.vietnamese_title IS NULL THEN 1 ELSE 0 END as needs_review,
+        (SELECT COUNT(*) FROM attachments WHERE expense_id = e.id) as attachment_count
+      FROM expenses e
+      ORDER BY e.created_at DESC
+    `).all();
+
+    return {
+      totalIncome,
+      totalExpense,
+      balance,
+      contributions,
+      expenses,
+    };
+  });
 }

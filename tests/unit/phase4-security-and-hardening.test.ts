@@ -230,5 +230,17 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
     expect(auditLog).toBeDefined();
     const afterState = JSON.parse(auditLog.after_state);
     expect(afterState.memberName).toBe('Nguyễn Thị Huế (Lương Tài)');
+
+    // 7. GET /api/v1/admin/financials returns totalIncome, totalExpense, balance, and transaction lists
+    const finRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/financials',
+      headers: { cookie: cookieHeader },
+    });
+    expect(finRes.statusCode).toBe(200);
+    const finData = JSON.parse(finRes.payload);
+    expect(finData.totalIncome).toBe(500000);
+    expect(finData.contributions.length).toBeGreaterThan(0);
+    expect(finData.contributions[0].contributor_name).toBe('Nguyễn Thị Huế (Lương Tài)');
   });
 });

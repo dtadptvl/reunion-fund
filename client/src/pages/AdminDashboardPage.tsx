@@ -6,8 +6,29 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  FOOD: 'Ẩm thực / Tiệc',
+  GIFT_TEACHER: 'Quà tri ân thầy cô',
+  FLOWERS: 'Hoa tươi',
+  PHOTO_VIDEO: 'Quay phim / Chụp ảnh',
+  PRINTING: 'In ấn kỷ yếu / Băng rôn',
+  TRANSPORT: 'Phương tiện / Đi lại',
+  REFUND: 'Hoàn tiền',
+  FUND_TRANSFER: 'Chuyển quỹ lớp',
+  OTHER: 'Chi phí khác',
+  UNKNOWN: 'Chưa phân loại',
+};
+
+const MATCH_METHOD_LABELS: Record<string, string> = {
+  EXACT_PAYMENT_CODE: 'Khớp mã thanh toán',
+  DETERMINISTIC_NAME_FALLBACK: 'Khớp tên tự động',
+  MANUAL_ASSIGNMENT: 'Thủ quỹ chỉ định',
+  UNRESOLVED: 'Chưa xác định',
+};
+
 export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [exceptions, setExceptions] = useState<any>(null);
+  const [financials, setFinancials] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [suggestedAmountInput, setSuggestedAmountInput] = useState<number>(500000);
   const [savingAmount, setSavingAmount] = useState(false);
@@ -19,11 +40,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
   const loadData = () => {
     Promise.all([
       fetch('/api/v1/admin/exceptions').then((r) => r.json()),
+      fetch('/api/v1/admin/financials').then((r) => r.json()).catch(() => null),
       fetch('/api/v1/public/members').then((r) => r.json()),
       fetch('/api/v1/public/config').then((r) => r.json()).catch(() => ({})),
     ])
-      .then(([exData, memData, cfgData]) => {
+      .then(([exData, finData, memData, cfgData]) => {
         setExceptions(exData);
+        setFinancials(finData);
         setMembers(memData.members || []);
         if (cfgData?.suggestedAmount) {
           setSuggestedAmountInput(cfgData.suggestedAmount);
@@ -49,7 +72,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       } else {
         setSyncMessage(`Lỗi đồng bộ: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       setSyncMessage('Không thể kết nối máy chủ để đồng bộ');
     } finally {
       setSyncing(false);
@@ -88,7 +111,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
       } else {
         setAmountSaveMsg(`Lỗi: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       setAmountSaveMsg('Không thể kết nối máy chủ');
     } finally {
       setSavingAmount(false);
@@ -101,6 +124,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
 
   return (
     <div>
+      {/* 1. Header & Quick Actions */}
       <div className="card">
         <div className="card-header">
           <div>
@@ -125,7 +149,25 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           </div>
         )}
 
-        {/* Exception Metric Cards */}
+        {/* Financial Summary Metric Cards */}
+        {financials && (
+          <div className="stats-grid" style={{ marginBottom: '20px' }}>
+            <div className="stat-box">
+              <div className="stat-label">Tổng thu</div>
+              <div className="stat-value income">{formatVND(financials.totalIncome || 0)}</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-label">Tổng chi</div>
+              <div className="stat-value expense">{formatVND(financials.totalExpense || 0)}</div>
+            </div>
+            <div className="stat-box" style={{ borderColor: 'var(--primary)', background: 'var(--primary-bg)' }}>
+              <div className="stat-label" style={{ color: 'var(--primary-text)', fontWeight: 600 }}>Quỹ còn lại</div>
+              <div className="stat-value primary">{formatVND(financials.balance || 0)}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Exception Queue Metric Cards */}
         <div className="stats-grid">
           <div className="stat-box">
             <div className="stat-label">Khoản thu chưa xác định</div>
@@ -146,7 +188,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
         </div>
       </div>
 
-      {/* Configuration: Mức đóng góp đề xuất */}
+      {/* 2. Configuration: Mức đóng góp đề xuất */}
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Cấu hình mức đóng góp đề xuất</h2>
@@ -163,7 +205,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
             </label>
             <input
               type="number"
-              min="10000"
+              min="1000"
               step="10000"
               value={suggestedAmountInput}
               onChange={(e) => setSuggestedAmountInput(Number(e.target.value))}
@@ -185,7 +227,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
         </form>
       </div>
 
-      {/* Section 0: Name Correction Requests */}
+      {/* 3. Section: Yêu cầu sửa tên */}
       {exceptions.pendingCorrections?.length > 0 && (
         <div className="card">
           <div className="card-header">
@@ -255,7 +297,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
         </div>
       )}
 
-      {/* Section 1: Unresolved Incoming Transactions */}
+      {/* 4. Section: Khoản thu chưa xác định */}
       {exceptions.unresolvedIncome?.length > 0 && (
         <div className="card">
           <div className="card-header">
@@ -287,7 +329,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
                       <option value="">-- Chọn thành viên --</option>
                       {members.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.full_name}
+                          {m.disambiguator ? `${m.full_name} (${m.disambiguator})` : m.full_name}
                         </option>
                       ))}
                     </select>
@@ -298,6 +340,121 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({ user, onLogo
           </table>
         </div>
       )}
+
+      {/* 5. Section A: "Khoản thu" (Incoming Contributions) */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Khoản thu</h2>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Tổng cộng: <strong>{financials?.contributions?.length || 0}</strong> lượt đóng góp
+          </div>
+        </div>
+        {financials?.contributions?.length > 0 ? (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Người đóng</th>
+                <th>Số tiền</th>
+                <th>Thời gian</th>
+                <th>Trạng thái / Cách đối chiếu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {financials.contributions.map((c: any) => (
+                <tr key={c.id}>
+                  <td>
+                    <strong>{c.contributor_name}</strong>
+                    {c.contributor_type === 'EXTERNAL' && (
+                      <span className="badge badge-outline" style={{ marginLeft: '8px', fontSize: '0.75rem' }}>Khách mời</span>
+                    )}
+                    {c.contributor_type === 'UNRESOLVED' && (
+                      <span className="badge badge-warning" style={{ marginLeft: '8px', fontSize: '0.75rem' }}>Chưa khớp</span>
+                    )}
+                  </td>
+                  <td style={{ fontWeight: 700, color: 'var(--income)' }}>
+                    +{formatVND(c.amount)}
+                  </td>
+                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {formatDateVN(c.created_at)}
+                  </td>
+                  <td>
+                    <span className="badge badge-neutral" style={{ fontSize: '0.8rem' }}>
+                      {MATCH_METHOD_LABELS[c.match_method] || c.match_method || 'Hoàn tất'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+            Chưa có khoản thu nào được ghi nhận.
+          </div>
+        )}
+      </div>
+
+      {/* 6. Section B: "Khoản chi" (Expenses) */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Khoản chi</h2>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Tổng cộng: <strong>{financials?.expenses?.length || 0}</strong> khoản chi
+          </div>
+        </div>
+        {financials?.expenses?.length > 0 ? (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nội dung</th>
+                <th>Danh mục</th>
+                <th>Số tiền</th>
+                <th>Thời gian</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {financials.expenses.map((e: any) => (
+                <tr key={e.id}>
+                  <td>
+                    <strong>{e.title}</strong>
+                    {e.recipient_name && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Người nhận: {e.recipient_name}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <span className="badge badge-neutral">
+                      {CATEGORY_LABELS[e.category] || e.category}
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 700, color: 'var(--expense)' }}>
+                    -{formatVND(e.amount)}
+                  </td>
+                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {formatDateVN(e.created_at)}
+                  </td>
+                  <td>
+                    {e.needs_review ? (
+                      <span className="badge badge-warning" style={{ fontSize: '0.8rem' }}>
+                        Cần bổ sung thông tin
+                      </span>
+                    ) : (
+                      <span className="badge badge-success" style={{ fontSize: '0.8rem' }}>
+                        ✓ Đã phân loại
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+            Chưa có khoản chi nào được ghi nhận.
+          </div>
+        )}
+      </div>
     </div>
   );
 };
