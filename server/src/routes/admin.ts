@@ -5,6 +5,7 @@ import { MemberService } from '../services/member.service.js';
 import { ReconciliationService } from '../services/reconciliation.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { ExpenseCategory } from '../db/schema.js';
+import { config } from '../config/env.js';
 
 export async function adminRoutes(
   app: FastifyInstance,
@@ -44,7 +45,7 @@ export async function adminRoutes(
     reply.setCookie('session_token', token, {
       path: '/',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: config.COOKIE_SECURE || process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 86400, // 24 hours
     });

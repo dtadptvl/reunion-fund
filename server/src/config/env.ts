@@ -27,6 +27,7 @@ const envSchema = z.object({
   ADMIN_USERNAME: z.string().default('thuquy'),
   ADMIN_PASSWORD_HASH: z.string().default('$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy'),
   SESSION_SECRET: z.string().default('default_insecure_secret_for_development_mode_only_replace_in_prod'),
+  COOKIE_SECURE: z.coerce.boolean().default(false),
 
   DEFAULT_CONTRIBUTION_AMOUNT: z.coerce.number().default(500000),
   REUNION_EVENT_TITLE: z.string().default('KỶ NIỆM 10 NĂM NGÀY RA TRƯỜNG'),

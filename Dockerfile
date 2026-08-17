@@ -40,11 +40,7 @@ VOLUME ["/app/data", "/app/uploads"]
 
 EXPOSE 3000
 
-# Set WorkingDir to / for universal namespace compatibility with runc exec on Android
+# Set WorkingDir to /
 WORKDIR /
-
-# Container Healthcheck using native Node 20 fetch in exec-array format (bypasses /bin/sh)
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD ["/usr/local/bin/node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 CMD ["/usr/local/bin/node", "/app/server/dist/index.js"]
