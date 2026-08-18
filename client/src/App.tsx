@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar.js';
 import { Footer } from './components/Footer.js';
 import { HomePage } from './pages/HomePage.js';
@@ -12,12 +12,52 @@ import { RegisterPage } from './pages/RegisterPage.js';
 import { VerifyEmailPage } from './pages/VerifyEmailPage.js';
 import { AdminDashboardPage } from './pages/AdminDashboardPage.js';
 import { LuckyWheelPage } from './pages/LuckyWheelPage.js';
+import { getTabFromPath, getPathFromTab } from './utils/routes.js';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<string>('home');
+  // Initialize tab state synchronously from browser URL pathname
+  const [currentTab, setCurrentTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return getTabFromPath(window.location.pathname);
+    }
+    return 'home';
+  });
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState<string>('');
   const [guestPrefillName, setGuestPrefillName] = useState<string>('');
+
+  // Unified navigateTo function that syncs React state with window.history
+  const navigateTo = useCallback((target: string, options?: { replace?: boolean }) => {
+    const targetPath = target.startsWith('/') ? target : getPathFromTab(target);
+    const targetTab = target.startsWith('/') ? getTabFromPath(target) : target;
+
+    setCurrentTab(targetTab);
+
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      if (currentPath !== targetPath) {
+        if (options?.replace) {
+          window.history.replaceState(null, '', targetPath);
+        } else {
+          window.history.pushState(null, '', targetPath);
+        }
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, []);
+
+  // Popstate listener for browser Back / Forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const tab = getTabFromPath(window.location.pathname);
+      setCurrentTab(tab);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     // Check existing session on load
@@ -41,26 +81,26 @@ export const App: React.FC = () => {
       console.error('Logout error:', err);
     }
     setCurrentUser(null);
-    setCurrentTab('home');
+    navigateTo('/');
   };
 
   const handleRegisterSuccess = (email: string) => {
     setPendingVerifyEmail(email);
-    setCurrentTab('verify-email');
+    navigateTo('/verify-email');
   };
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
     if (user.role === 'ADMIN') {
-      setCurrentTab('admin');
+      navigateTo('/admin');
     } else {
-      setCurrentTab('activities');
+      navigateTo('/activities');
     }
   };
 
   const handleGuestContributeRedirect = (name: string) => {
     setGuestPrefillName(name);
-    setCurrentTab('contribute');
+    navigateTo('/contribute');
   };
 
   return (
@@ -68,22 +108,22 @@ export const App: React.FC = () => {
       <Navbar
         currentTab={currentTab}
         currentUser={currentUser}
-        onSelectTab={setCurrentTab}
+        onSelectTab={(tab) => navigateTo(tab)}
         onLogout={handleLogout}
       />
 
       <main className="main-content">
         {currentTab === 'home' && (
           <HomePage
-            onGoToContribute={() => setCurrentTab('contribute')}
-            onGoToActivities={() => setCurrentTab('activities')}
+            onGoToContribute={() => navigateTo('/contribute')}
+            onGoToActivities={() => navigateTo('/activities')}
           />
         )}
         {currentTab === 'activities' && (
           <ActivitiesPage
             currentUser={currentUser}
-            onGoToLogin={() => setCurrentTab('login')}
-            onGoToRegister={() => setCurrentTab('register')}
+            onGoToLogin={() => navigateTo('/login')}
+            onGoToRegister={() => navigateTo('/register')}
           />
         )}
         {currentTab === 'lucky-wheel' && (
@@ -95,7 +135,8 @@ export const App: React.FC = () => {
           <ContributePage
             currentUser={currentUser}
             initialGuestName={guestPrefillName}
-            onGoToLogin={() => setCurrentTab('login')}
+            onGoToLogin={() => navigateTo('/login')}
+            onGoToRegister={() => navigateTo('/register')}
           />
         )}
         {currentTab === 'contributors' && <ContributorsPage />}
@@ -105,7 +146,7 @@ export const App: React.FC = () => {
         {currentTab === 'register' && (
           <RegisterPage
             onRegisterSuccess={handleRegisterSuccess}
-            onGoToLogin={() => setCurrentTab('login')}
+            onGoToLogin={() => navigateTo('/login')}
             onGoToGuestContribute={handleGuestContributeRedirect}
           />
         )}
@@ -113,8 +154,8 @@ export const App: React.FC = () => {
         {currentTab === 'verify-email' && (
           <VerifyEmailPage
             initialEmail={pendingVerifyEmail}
-            onVerificationSuccess={() => setCurrentTab('login')}
-            onGoToLogin={() => setCurrentTab('login')}
+            onVerificationSuccess={() => navigateTo('/login')}
+            onGoToLogin={() => navigateTo('/login')}
           />
         )}
 
@@ -124,13 +165,13 @@ export const App: React.FC = () => {
               <AdminDashboardPage
                 user={currentUser}
                 onLogout={handleLogout}
-                onGoToLuckyWheel={() => setCurrentTab('lucky-wheel')}
+                onGoToLuckyWheel={() => navigateTo('/lottery')}
               />
             ) : (
               <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
                 <h2 style={{ color: 'var(--primary)', marginTop: 0 }}>Đã Đăng Nhập Thành Công</h2>
                 <p>Xin chào <strong>{currentUser.fullName}</strong>!</p>
-                <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
+                <button className="btn btn-primary" onClick={() => navigateTo('/')}>
                   Về Trang Chủ
                 </button>
               </div>
@@ -138,10 +179,10 @@ export const App: React.FC = () => {
           ) : (
             <LoginPage
               onLoginSuccess={handleLoginSuccess}
-              onGoToRegister={() => setCurrentTab('register')}
+              onGoToRegister={() => navigateTo('/register')}
               onGoToVerify={(email) => {
                 if (email) setPendingVerifyEmail(email);
-                setCurrentTab('verify-email');
+                navigateTo('/verify-email');
               }}
             />
           )
@@ -153,13 +194,13 @@ export const App: React.FC = () => {
               <AdminDashboardPage
                 user={currentUser}
                 onLogout={handleLogout}
-                onGoToLuckyWheel={() => setCurrentTab('lucky-wheel')}
+                onGoToLuckyWheel={() => navigateTo('/lottery')}
               />
             ) : (
               <div style={{ maxWidth: '500px', margin: '60px auto', textAlign: 'center' }} className="card">
                 <h2 style={{ color: 'var(--danger)', marginTop: 0 }}>Không Có Quyền Truy Cập</h2>
                 <p>Bạn đang đăng nhập với vai trò thành viên ({currentUser.fullName}). Trang Quản trị chỉ dành cho Ban Quản trị lớp.</p>
-                <button className="btn btn-primary" onClick={() => setCurrentTab('home')}>
+                <button className="btn btn-primary" onClick={() => navigateTo('/')}>
                   Về Trang Chủ
                 </button>
               </div>
@@ -167,17 +208,17 @@ export const App: React.FC = () => {
           ) : (
             <LoginPage
               onLoginSuccess={handleLoginSuccess}
-              onGoToRegister={() => setCurrentTab('register')}
+              onGoToRegister={() => navigateTo('/register')}
               onGoToVerify={(email) => {
                 if (email) setPendingVerifyEmail(email);
-                setCurrentTab('verify-email');
+                navigateTo('/verify-email');
               }}
             />
           )
         )}
       </main>
 
-      <Footer currentUser={currentUser} onSelectTab={setCurrentTab} />
+      <Footer currentUser={currentUser} onSelectTab={(tab) => navigateTo(tab)} />
     </div>
   );
 };

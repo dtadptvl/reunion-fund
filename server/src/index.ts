@@ -8,6 +8,7 @@ import { ContributionService } from './services/contribution.service.js';
 import { ExpenseService } from './services/expense.service.js';
 import { MemberService } from './services/member.service.js';
 import { ReconciliationService } from './services/reconciliation.service.js';
+import { AuthService } from './services/auth.service.js';
 import { GeminiAIProvider } from './providers/ai/gemini-provider.js';
 import { MockAIProvider } from './providers/ai/mock-ai-provider.js';
 
@@ -21,7 +22,10 @@ async function bootstrap() {
     console.log(`[Startup] Seeded ${seeded} canonical class members into database.`);
   }
 
-  const app = buildApp({ db });
+  const authService = new AuthService(db);
+  await authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH);
+
+  const app = buildApp({ db, authService });
 
   try {
     await app.listen({ port: config.PORT, host: config.HOST });

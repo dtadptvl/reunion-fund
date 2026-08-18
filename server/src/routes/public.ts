@@ -12,6 +12,7 @@ import {
   formatTransferContent,
   generateBankDisplayName,
 } from '../services/vietqr.service.js';
+import { AuthService } from '../services/auth.service.js';
 import { config } from '../config/env.js';
 
 export async function publicRoutes(
@@ -23,6 +24,7 @@ export async function publicRoutes(
     attachmentService: AttachmentService;
     activityService?: ActivityService;
     lotteryService?: LotteryService;
+    authService?: AuthService;
   }
 ) {
   const db = options.db;
@@ -295,11 +297,28 @@ export async function publicRoutes(
       });
     }
 
+    // Check authenticated session
+    const sessionToken = (request.cookies as any)?.session_token;
+    const session = options.authService ? options.authService.validateSession(sessionToken) : null;
+
     let bankDisplayName = 'BAN LOP';
     let memberId: string | null = null;
     let externalContributorId: string | null = null;
 
-    if (body.memberId) {
+    if (session && session.memberId) {
+      // Authenticated canonical member/admin: strictly bind to session.memberId
+      if (body.memberId && body.memberId !== session.memberId) {
+        return reply.status(403).send({ error: 'Không thể tạo mã đóng quỹ dưới danh tính thành viên khác' });
+      }
+      const member = db
+        .prepare('SELECT * FROM members WHERE id = ?')
+        .get(session.memberId) as any;
+      if (!member) {
+        return reply.status(404).send({ error: 'Không tìm thấy thông tin thành viên đã đăng nhập' });
+      }
+      memberId = member.id;
+      bankDisplayName = member.bank_display_name;
+    } else if (body.memberId) {
       const member = db
         .prepare('SELECT * FROM members WHERE id = ?')
         .get(body.memberId) as any;
@@ -317,7 +336,7 @@ export async function publicRoutes(
       externalContributorId = ext.id;
       bankDisplayName = generateBankDisplayName(ext.raw_name);
     } else {
-      return reply.status(400).send({ error: 'Vui lòng chọn tên hoặc nhập tên người đóng góp' });
+      return reply.status(400).send({ error: 'Vui lòng đăng nhập hoặc nhập tên người đóng góp' });
     }
 
     // Generate unique payment code

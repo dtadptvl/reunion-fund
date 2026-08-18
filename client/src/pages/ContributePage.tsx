@@ -5,17 +5,15 @@ interface ContributePageProps {
   currentUser?: any;
   initialGuestName?: string;
   onGoToLogin?: () => void;
+  onGoToRegister?: () => void;
 }
 
 export const ContributePage: React.FC<ContributePageProps> = ({
   currentUser,
-  initialGuestName = '',
   onGoToLogin,
+  onGoToRegister,
 }) => {
-  // Guest contributor state
-  const [guestName, setGuestName] = useState<string>(initialGuestName);
-
-  // Suggested amount from server (loaded dynamically from public config, no stale hardcoded flash)
+  // Suggested amount from server (loaded dynamically from public config)
   const [suggestedAmount, setSuggestedAmount] = useState<number | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [customAmountInput, setCustomAmountInput] = useState<string>('');
@@ -25,13 +23,6 @@ export const ContributePage: React.FC<ContributePageProps> = ({
   const [intentData, setIntentData] = useState<any>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-
-  // Update guest name if initialGuestName prop changes
-  useEffect(() => {
-    if (initialGuestName) {
-      setGuestName(initialGuestName);
-    }
-  }, [initialGuestName]);
 
   // Fetch suggested config
   useEffect(() => {
@@ -44,7 +35,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
         setLoadingConfig(false);
       })
       .catch((err) => {
-        console.error(err);
+        console.error('Lỗi tải cấu hình:', err);
         setLoadingConfig(false);
       });
   }, []);
@@ -72,27 +63,22 @@ export const ContributePage: React.FC<ContributePageProps> = ({
     setErrorMessage('');
     const finalAmount = isCustomAmount ? Number(customAmountInput) : (suggestedAmount || 0);
 
-    if (!finalAmount || isNaN(finalAmount) || finalAmount <= 0) {
+    if (!finalAmount || isNaN(finalAmount) || finalAmount <= 0 || !Number.isInteger(finalAmount)) {
       setErrorMessage('Vui lòng chọn hoặc nhập số tiền đóng góp hợp lệ (số nguyên dương VNĐ)');
       return;
     }
 
-    if (!currentUser && !guestName.trim()) {
-      setErrorMessage('Vui lòng nhập họ và tên của bạn để đóng góp với tư cách khách');
+    if (!currentUser) {
+      setErrorMessage('Vui lòng đăng nhập tài khoản thành viên để đóng quỹ.');
       return;
     }
 
     setLoading(true);
     try {
-      const payload = currentUser
-        ? {
-            memberId: currentUser.memberId,
-            amount: finalAmount,
-          }
-        : {
-            customName: guestName.trim(),
-            amount: finalAmount,
-          };
+      const payload = {
+        memberId: currentUser.memberId,
+        amount: finalAmount,
+      };
 
       const res = await fetch('/api/v1/public/intent', {
         method: 'POST',
@@ -106,7 +92,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
       } else {
         setIntentData(data);
       }
-    } catch (err: any) {
+    } catch {
       setErrorMessage('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
     } finally {
       setLoading(false);
@@ -117,104 +103,81 @@ export const ContributePage: React.FC<ContributePageProps> = ({
     <div style={{ maxWidth: '640px', margin: '0 auto' }}>
       <div className="card">
         <div className="card-header">
-          <h1 className="card-title">Đóng Quỹ Họp Lớp</h1>
+          <h1 className="card-title">Đóng Quỹ Hoạt Động</h1>
         </div>
 
         {errorMessage && (
-          <div style={{ padding: '12px', background: 'var(--danger-bg)', color: 'var(--danger-text)', borderRadius: 'var(--radius-md)', marginBottom: '16px' }}>
+          <div style={{ padding: '12px 16px', background: 'var(--danger-bg)', color: 'var(--danger-text)', borderRadius: 'var(--radius-md)', marginBottom: '16px', fontWeight: 500 }}>
             {errorMessage}
           </div>
         )}
 
-        {!intentData ? (
-          <div>
-            {/* Step 1: Contributor Identity */}
-            {currentUser ? (
-              /* Authenticated Member / Admin Flow: Immutable Identity */
-              <div
-                style={{
-                  padding: '16px 20px',
-                  background: 'var(--bg-card-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1.5px solid var(--primary)',
-                  marginBottom: '24px',
-                }}
-              >
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Tài khoản thành viên lớp đã xác thực
-                </div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--primary)' }}>
-                  👤 Bạn đang đóng quỹ với tên: <strong>{currentUser.fullName}</strong>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Khoản đóng sẽ tự động cập nhật vào thông tin cá nhân và tính tỷ lệ quay số may mắn của bạn.
-                </div>
-              </div>
-            ) : (
-              /* Unauthenticated / Guest Flow */
-              <div style={{ marginBottom: '24px' }}>
-                {/* Member Login Callout */}
-                <div
-                  style={{
-                    padding: '14px 16px',
-                    background: 'var(--bg-card-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px dashed var(--border-color)',
-                    marginBottom: '18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '10px',
-                  }}
+        {!currentUser ? (
+          /* Unauthenticated State: Clear guidance to Log in / Register */
+          <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🔐</div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '8px' }}>
+              Yêu Cầu Đăng Nhập Thành Viên
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.5, marginBottom: '24px' }}>
+              Đóng quỹ họp lớp được liên kết tự động và trực tiếp với tài khoản thành viên của bạn để tính điểm và quyền lợi quay số may mắn.
+            </p>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {onGoToLogin && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-lg"
+                  onClick={onGoToLogin}
+                  style={{ minWidth: '160px' }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Bạn là thành viên trong danh sách lớp A1?</div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                      Đăng nhập để tự động liên kết đóng góp và nhận quyền lợi thành viên.
-                    </div>
-                  </div>
-                  {onGoToLogin && (
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      onClick={onGoToLogin}
-                      style={{ fontWeight: 600, fontSize: '0.85rem' }}
-                    >
-                      Đăng nhập để đóng quỹ
-                    </button>
-                  )}
-                </div>
+                  Đăng Nhập
+                </button>
+              )}
+              {onGoToRegister && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-lg"
+                  onClick={onGoToRegister}
+                  style={{ minWidth: '160px' }}
+                >
+                  Đăng Ký Tài Khoản
+                </button>
+              )}
+            </div>
 
-                {/* Guest Contributor Name Input */}
-                <div>
-                  <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px' }}>
-                    1. Đóng góp với tư cách khách
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Nhập họ và tên hoặc tổ chức của bạn..."
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-color)',
-                      fontSize: '1rem',
-                    }}
-                  />
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Khách đóng góp sẽ được ghi nhận và vinh danh công khai trên bảng đóng góp.
-                  </div>
-                </div>
+            <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              * Nếu bạn muốn đóng góp ủng hộ với tư cách khách (không có tên trong danh sách lớp), vui lòng chọn <strong>Đăng Ký Tài Khoản</strong> và chọn <em>"Không có tên trong danh sách"</em>.
+            </div>
+          </div>
+        ) : !intentData ? (
+          /* Authenticated Member / Admin Flow */
+          <div>
+            {/* Account Identity Badge */}
+            <div
+              style={{
+                padding: '16px 20px',
+                background: 'var(--bg-card-subtle)',
+                borderRadius: 'var(--radius-md)',
+                border: '1.5px solid var(--primary)',
+                marginBottom: '24px',
+              }}
+            >
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                Tài khoản thành viên lớp đã xác thực
               </div>
-            )}
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)' }}>
+                👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Khoản đóng sẽ tự động cập nhật vào danh sách đóng góp và hồ sơ của bạn ngay khi chuyển khoản.
+              </div>
+            </div>
 
-            {/* Step 2: Choose Contribution Amount */}
+            {/* Choose Amount */}
             <div style={{ marginBottom: '28px' }}>
               <label style={{ display: 'block', fontWeight: 700, marginBottom: '10px' }}>
-                {currentUser ? '1.' : '2.'} Chọn số tiền đóng góp
+                Chọn số tiền đóng góp
               </label>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -293,87 +256,102 @@ export const ContributePage: React.FC<ContributePageProps> = ({
               </div>
             </div>
 
-            {/* Step 3: Generate VietQR Button */}
+            {/* Generate VietQR Button */}
             <button
               className="btn btn-primary btn-lg"
               style={{ width: '100%' }}
               onClick={handleCreateQR}
-              disabled={loading}
+              disabled={loading || (loadingConfig && suggestedAmount === null)}
             >
-              {loading ? 'Đang tạo mã QR...' : 'Tạo mã chuyển khoản VietQR'}
+              {loading ? 'Đang tạo mã QR...' : 'Tạo Mã QR Đóng Quỹ'}
             </button>
           </div>
         ) : (
-          /* VietQR Display & Live Polling Status */
+          /* Step 2: VietQR Display & Payment Status */
           <div style={{ textAlign: 'center' }}>
-            {!isPaid ? (
-              <div>
-                <div style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  Quét mã QR bằng ứng dụng ngân hàng bất kỳ
-                </div>
-
-                <div style={{ margin: '16px auto', maxWidth: '300px', padding: '12px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)' }}>
-                  <img
-                    src={intentData.qrUrl}
-                    alt="VietQR Chuyển Khoản"
-                    style={{ width: '100%', height: 'auto', display: 'block' }}
-                  />
-                </div>
-
-                <div style={{ background: 'var(--bg-card-subtle)', padding: '16px', borderRadius: 'var(--radius-md)', textAlign: 'left', marginBottom: '20px' }}>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Người đóng góp: </span>
-                    <strong>{intentData.contributorName || currentUser?.fullName || guestName}</strong>
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Số tiền: </span>
-                    <strong style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>
-                      {formatVND(intentData.expectedAmount)}
-                    </strong>
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Nội dung chuyển khoản (bắt buộc giữ nguyên): </span>
-                    <strong style={{ display: 'block', fontSize: '1.1rem', letterSpacing: '0.05em', color: 'var(--text-main)', marginTop: '4px', background: '#fff', padding: '8px', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
-                      {intentData.transferContent}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--text-muted)' }}>Ngân hàng thụ hưởng: </span>
-                    <strong>{intentData.bankName} - {intentData.bankAccount}</strong> ({intentData.accountName})
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  <span className="pulse-dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }}></span>
-                  Đang chờ hệ thống ngân hàng xác nhận giao dịch...
-                </div>
-
-                <button
-                  className="btn btn-outline"
-                  style={{ marginTop: '20px' }}
-                  onClick={() => setIntentData(null)}
-                >
-                  ← Đổi số tiền hoặc thông tin đóng góp
-                </button>
-              </div>
-            ) : (
-              /* Success State */
-              <div style={{ padding: '30px 10px' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🎉</div>
-                <h2 style={{ color: 'var(--primary)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-                  ĐÃ NHẬN ĐÓNG GÓP THÀNH CÔNG!
-                </h2>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  Hệ thống đã tự động ghi nhận khoản tiền đóng góp vào quỹ họp lớp. Cảm ơn bạn rất nhiều!
+            {isPaid ? (
+              <div style={{ padding: '32px 16px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎉</div>
+                <h2 style={{ color: 'var(--primary)', marginBottom: '8px' }}>Đóng Quỹ Thành Công!</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+                  Cảm ơn <strong>{currentUser.fullName}</strong> đã đóng góp <strong>{formatVND(intentData.expectedAmount)}</strong> vào quỹ lớp.
                 </p>
                 <button
                   className="btn btn-primary"
                   onClick={() => {
                     setIntentData(null);
                     setIsPaid(false);
+                    setCustomAmountInput('');
+                    setIsCustomAmount(false);
                   }}
                 >
-                  Đóng góp thêm khoản khác
+                  Đóng khoản khác
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Mã thanh toán của bạn</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '1px' }}>
+                    {intentData.paymentCode}
+                  </div>
+                </div>
+
+                {/* QR Code Container */}
+                <div
+                  style={{
+                    display: 'inline-block',
+                    padding: '16px',
+                    background: 'white',
+                    borderRadius: 'var(--radius-lg)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    marginBottom: '20px',
+                  }}
+                >
+                  <img
+                    src={intentData.qrUrl}
+                    alt="VietQR Đóng Quỹ Họp Lớp"
+                    style={{ width: '100%', maxWidth: '280px', height: 'auto', display: 'block' }}
+                  />
+                </div>
+
+                {/* Transfer Info Details */}
+                <div
+                  style={{
+                    background: 'var(--bg-card-subtle)',
+                    padding: '16px',
+                    borderRadius: 'var(--radius-md)',
+                    textAlign: 'left',
+                    marginBottom: '24px',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Số tiền:</span>
+                    <strong>{formatVND(intentData.expectedAmount)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Nội dung chuyển khoản:</span>
+                    <strong style={{ color: 'var(--primary)', userSelect: 'all' }}>{intentData.transferContent}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Trạng thái:</span>
+                    <span style={{ color: '#d97706', fontWeight: 600 }}>⏳ Đang chờ nhận tiền...</span>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                  Hệ thống sẽ tự động xác nhận ngay khi nhận được biến động số dư. Bạn không cần làm gì thêm.
+                </div>
+
+                <button
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setIntentData(null);
+                    setIsPaid(false);
+                  }}
+                >
+                  Quay lại
                 </button>
               </div>
             )}

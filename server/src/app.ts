@@ -47,6 +47,7 @@ export interface BuildAppOptions {
   bankSyncProvider?: BankSyncProvider;
   aiProvider?: AIProvider;
   emailProvider?: EmailProvider;
+  authService?: AuthService;
 }
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -95,7 +96,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     contributionService,
     expenseService
   );
-  const authService = new AuthService(db, emailProvider);
+  const authService = options.authService || new AuthService(db, emailProvider);
   authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
@@ -169,6 +170,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     attachmentService,
     activityService,
     lotteryService,
+    authService,
   });
   app.register(authRoutes, {
     db,

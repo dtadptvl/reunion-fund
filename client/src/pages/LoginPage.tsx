@@ -85,6 +85,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </label>
           <input
             type="text"
+            name="username"
             className="form-input"
             required
             placeholder="VD: nguyenhoa12 hoặc email@gmail.com"
@@ -101,6 +102,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </label>
           <input
             type="password"
+            name="password"
             className="form-input"
             required
             placeholder="Nhập mật khẩu của bạn"

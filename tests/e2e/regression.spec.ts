@@ -177,3 +177,122 @@ test.describe('Pre-Hybrid Quality Gate — E2E Layout & Responsiveness', () => {
     });
   }
 });
+
+test.describe('H1 Routing, Deep Links, Back/Forward & Contribution Tests', () => {
+  test('Desktop browser history navigation: pushState, Back, Forward', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/');
+    await expect(page.locator('.hero-card')).toBeVisible();
+    expect(page.url()).toContain('/');
+
+    // 1. Click Kế hoạch và hoạt động
+    await page.locator('.desktop-nav-links .nav-link', { hasText: 'Kế hoạch và hoạt động' }).click();
+    await expect(page).toHaveURL(/.*\/activities/);
+    await expect(page.locator('.card-title', { hasText: 'Kế hoạch họp lớp' })).toBeVisible();
+
+    // 2. Click Quyết toán
+    await page.locator('.desktop-nav-links .nav-link', { hasText: 'Quyết toán' }).click();
+    await expect(page).toHaveURL(/.*\/settlement/);
+    await expect(page.locator('.card-title', { hasText: /QUỸ ĐANG HOẠT ĐỘNG|ĐÃ QUYẾT TOÁN/ })).toBeVisible();
+
+    // 3. Browser Back -> Kế hoạch và hoạt động
+    await page.goBack();
+    await expect(page).toHaveURL(/.*\/activities/);
+    await expect(page.locator('.card-title', { hasText: 'Kế hoạch họp lớp' })).toBeVisible();
+
+    // 4. Browser Back -> Trang chủ
+    await page.goBack();
+    await expect(page.locator('.hero-card')).toBeVisible();
+
+    // 5. Browser Forward -> Kế hoạch và hoạt động
+    await page.goForward();
+    await expect(page).toHaveURL(/.*\/activities/);
+    await expect(page.locator('.card-title', { hasText: 'Kế hoạch họp lớp' })).toBeVisible();
+
+    // 6. Browser Forward -> Quyết toán
+    await page.goForward();
+    await expect(page).toHaveURL(/.*\/settlement/);
+    await expect(page.locator('.card-title', { hasText: /QUỸ ĐANG HOẠT ĐỘNG|ĐÃ QUYẾT TOÁN/ })).toBeVisible();
+  });
+
+  test('Mobile drawer navigation updates URL and handles Back navigation', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page.locator('.brand-main-title')).toBeVisible();
+
+    // Open drawer and click Danh sách đóng góp
+    const toggle = page.locator('.navbar-toggle');
+    await toggle.click();
+    const drawer = page.locator('.mobile-nav-drawer');
+    await expect(drawer).toBeVisible();
+    await drawer.locator('button', { hasText: 'Danh sách đóng góp' }).click();
+    await expect(page).toHaveURL(/.*\/contributors/);
+    await expect(page.locator('.card-title', { hasText: 'Danh Sách Đóng Góp' })).toBeVisible();
+
+    // Open drawer again and click Danh sách chi tiêu
+    await toggle.click();
+    await expect(drawer).toBeVisible();
+    await drawer.locator('button', { hasText: 'Danh sách chi tiêu' }).click();
+    await expect(page).toHaveURL(/.*\/expenses/);
+    await expect(page.locator('.card-title', { hasText: 'Danh Sách Khoản Chi Minh Bạch' })).toBeVisible();
+
+    // Browser Back -> Danh sách đóng góp
+    await page.goBack();
+    await expect(page).toHaveURL(/.*\/contributors/);
+    await expect(page.locator('.card-title', { hasText: 'Danh Sách Đóng Góp' })).toBeVisible();
+  });
+
+  test('Direct URL deep linking and page reload persistence', async ({ page }) => {
+    const routesToTest = [
+      { path: '/activities', heading: 'Kế hoạch họp lớp' },
+      { path: '/contributors', heading: 'Danh Sách Đóng Góp' },
+      { path: '/expenses', heading: 'Danh Sách Khoản Chi Minh Bạch' },
+      { path: '/settlement', heading: /QUỸ ĐANG HOẠT ĐỘNG|ĐÃ QUYẾT TOÁN/ },
+      { path: '/login', heading: 'Đăng Nhập Thành Viên' },
+      { path: '/register', heading: 'Đăng Ký Tài Khoản' },
+    ];
+
+    for (const r of routesToTest) {
+      await page.goto(r.path);
+      await expect(page.locator('.card-title, .auth-form-title', { hasText: r.heading })).toBeVisible({ timeout: 10000 });
+
+      // Refresh and assert it stays on the same page
+      await page.reload();
+      await expect(page.locator('.card-title, .auth-form-title', { hasText: r.heading })).toBeVisible({ timeout: 10000 });
+      expect(page.url()).toContain(r.path);
+    }
+  });
+
+  test('Unauthenticated user visiting /contribute sees login/register prompt without contributor selector', async ({ page }) => {
+    await page.goto('/contribute');
+    await expect(page.locator('.card-title', { hasText: 'Đóng Quỹ Hoạt Động' })).toBeVisible();
+
+    // Assert login prompt is present
+    await expect(page.locator('text=Yêu Cầu Đăng Nhập Thành Viên')).toBeVisible();
+    await expect(page.locator('.card button', { hasText: 'Đăng Nhập' })).toBeVisible();
+    await expect(page.locator('.card button', { hasText: 'Đăng Ký Tài Khoản' })).toBeVisible();
+
+    // Assert NO contributor dropdown or "Bạn đang đóng quỹ dưới tên ai?" is rendered
+    await expect(page.locator('text=Bạn đang đóng quỹ dưới tên ai?')).toBeHidden();
+    await expect(page.locator('select')).toBeHidden();
+  });
+
+  test('Canonical Admin identity: logs in and verifies Dương Tuấn Anh is displayed without legacy text', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.locator('.auth-shell-card')).toBeVisible();
+
+    await page.fill('input[name="username"]', 'admin');
+    await page.fill('input[name="password"]', '123456');
+    await page.click('button[type="submit"]');
+
+    // Should redirect to Admin Dashboard
+    await expect(page.locator('.card-title', { hasText: 'Bảng Điều Khiển Quản Trị' })).toBeVisible({ timeout: 10000 });
+
+    // Assert canonical name is displayed in admin card header
+    await expect(page.locator('.card-header strong', { hasText: 'Dương Tuấn Anh' })).toBeVisible();
+
+    // Assert legacy text is NOT present anywhere on the page
+    const pageText = await page.innerText('body');
+    expect(pageText).not.toContain('Thủ Quỹ Lớp A1');
+  });
+});

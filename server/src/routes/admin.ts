@@ -125,7 +125,7 @@ export async function adminRoutes(
     reply.setCookie('session_token', token, {
       path: '/',
       httpOnly: true,
-      secure: config.COOKIE_SECURE || process.env.NODE_ENV === 'production',
+      secure: config.COOKIE_SECURE || request.protocol === 'https',
       sameSite: 'lax',
       maxAge: 86400, // 24 hours
     });

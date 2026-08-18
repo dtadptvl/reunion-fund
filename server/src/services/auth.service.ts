@@ -60,64 +60,66 @@ export class AuthService {
   async seedInitialStaff(username: string, passwordHash?: string, fullName = 'Dương Tuấn Anh'): Promise<boolean> {
     if (!this.db.open) return false;
 
-    // Find Dương Tuấn Anh in canonical members table
-    const tuanAnh = this.db
-      .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
-      .get() as { id: string; full_name: string } | undefined;
+    const seedAccount = async (u: string, pHash?: string, fName = 'Dương Tuấn Anh') => {
+      if (!this.db.open) return;
+      const tuanAnh = this.db
+        .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
+        .get() as { id: string; full_name: string } | undefined;
 
-    const finalFullName = tuanAnh ? tuanAnh.full_name : fullName;
-    const finalMemberId = tuanAnh ? tuanAnh.id : null;
+      const finalFullName = tuanAnh ? tuanAnh.full_name : fName;
+      const finalMemberId = tuanAnh ? tuanAnh.id : null;
 
-    // Check staff_users table
-    const existingStaff = this.db.prepare('SELECT id FROM staff_users WHERE username = ?').get(username);
-    const finalHash =
-      passwordHash && !passwordHash.includes('dummy')
-        ? passwordHash
-        : await this.hashPassword('123456');
+      const existingStaff = this.db.prepare('SELECT id FROM staff_users WHERE username = ?').get(u);
+      const finalHash =
+        pHash && !pHash.includes('dummy')
+          ? pHash
+          : await this.hashPassword('123456');
 
-    if (!this.db.open) return false;
+      if (!this.db.open) return;
 
-    if (!existingStaff) {
-      const id = crypto.randomUUID();
-      this.db
-        .prepare(`
-          INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
-          VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
-        `)
-        .run(id, username, finalHash, finalFullName);
-    } else {
-      this.db
-        .prepare(`
-          UPDATE staff_users SET password_hash = ?, full_name = ? WHERE username = ?
-        `)
-        .run(finalHash, finalFullName, username);
-    }
+      if (!existingStaff) {
+        const id = crypto.randomUUID();
+        this.db
+          .prepare(`
+            INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
+            VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
+          `)
+          .run(id, u, finalHash, finalFullName);
+      } else {
+        this.db
+          .prepare(`
+            UPDATE staff_users SET password_hash = ?, full_name = ? WHERE username = ?
+          `)
+          .run(finalHash, finalFullName, u);
+      }
 
-    // If another account is duplicate-linked to tuanAnh, decouple it safely
-    if (!this.db.open) return false;
-    if (finalMemberId) {
-      this.db
-        .prepare('UPDATE users SET member_id = NULL, role = \'MEMBER\' WHERE member_id = ? AND username != ?')
-        .run(finalMemberId, username);
-    }
+      if (finalMemberId) {
+        this.db
+          .prepare('UPDATE users SET member_id = NULL, role = \'MEMBER\' WHERE member_id = ? AND username != ?')
+          .run(finalMemberId, u);
+      }
 
-    // Also ensure admin exists in users table linked to Dương Tuấn Anh
-    if (!this.db.open) return false;
-    const existingUser = this.db.prepare('SELECT id FROM users WHERE username = ?').get(username) as { id: string } | undefined;
-    if (!existingUser) {
-      const id = crypto.randomUUID();
-      this.db
-        .prepare(`
-          INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `)
-        .run(id, finalMemberId, username, `${username}@reunion.local`, finalHash, finalFullName);
-    } else {
-      this.db
-        .prepare(`
-          UPDATE users SET member_id = ?, password_hash = ?, full_name = ?, role = 'ADMIN', status = 'ACTIVE', email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE username = ?
-        `)
-        .run(finalMemberId, finalHash, finalFullName, username);
+      const existingUser = this.db.prepare('SELECT id FROM users WHERE username = ?').get(u) as { id: string } | undefined;
+      if (!existingUser) {
+        const id = crypto.randomUUID();
+        this.db
+          .prepare(`
+            INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `)
+          .run(id, finalMemberId, u, `${u}@reunion.local`, finalHash, finalFullName);
+      } else {
+        this.db
+          .prepare(`
+            UPDATE users SET member_id = ?, password_hash = ?, full_name = ?, role = 'ADMIN', status = 'ACTIVE', email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE username = ?
+          `)
+          .run(finalMemberId, finalHash, finalFullName, u);
+      }
+    };
+
+    await seedAccount(username, passwordHash, fullName);
+    if (username !== 'admin') {
+      await seedAccount('admin', undefined, 'Dương Tuấn Anh');
     }
 
     this.seedDefaultAdmins();
@@ -126,6 +128,10 @@ export class AuthService {
 
   seedDefaultAdmins(): void {
     if (!this.db.open) return;
+
+    // Clean up any legacy Treasurer display names in staff_users and users
+    this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%' OR username = 'admin'").run();
+    this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%'").run();
 
     const adminMemberIds: string[] = [];
 
@@ -421,12 +427,25 @@ export class AuthService {
         };
       }
 
+      let canonicalFullName = user.full_name;
+      if (user.member_id) {
+        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(user.member_id) as any;
+        if (m) {
+          canonicalFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+        }
+      } else if (user.role === 'ADMIN') {
+        const defaultAdmin = this.db.prepare("SELECT full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+        if (defaultAdmin) {
+          canonicalFullName = defaultAdmin.full_name;
+        }
+      }
+
       return {
         status: 'SUCCESS',
         session: {
           userId: user.id,
           username: user.username,
-          fullName: user.full_name,
+          fullName: canonicalFullName,
           role: user.role,
           memberId: user.member_id,
           email: user.email,
@@ -445,14 +464,30 @@ export class AuthService {
         return { status: 'INVALID_CREDENTIALS', error: 'Tên đăng nhập hoặc mật khẩu không chính xác' };
       }
 
+      let staffFullName = 'Dương Tuấn Anh';
+      let staffMemberId: string | null = null;
+      if (staff.member_id) {
+        const m = this.db.prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?').get(staff.member_id) as any;
+        if (m) {
+          staffFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+          staffMemberId = m.id;
+        }
+      } else {
+        const defaultAdmin = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+        if (defaultAdmin) {
+          staffFullName = defaultAdmin.full_name;
+          staffMemberId = defaultAdmin.id;
+        }
+      }
+
       return {
         status: 'SUCCESS',
         session: {
           userId: staff.id,
           username: staff.username,
-          fullName: staff.full_name,
+          fullName: staffFullName,
           role: 'ADMIN',
-          memberId: staff.member_id,
+          memberId: staffMemberId,
           email: null,
         },
       };
@@ -476,6 +511,20 @@ export class AuthService {
     if (Date.now() > session.expiresAt) {
       this.sessions.delete(token);
       return null;
+    }
+
+    if (this.db && this.db.open) {
+      if (session.data.memberId) {
+        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(session.data.memberId) as any;
+        if (m) {
+          session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+        }
+      } else if (session.data.role === 'ADMIN') {
+        const defaultAdmin = this.db.prepare("SELECT full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+        if (defaultAdmin) {
+          session.data.fullName = defaultAdmin.full_name;
+        }
+      }
     }
 
     return session.data;
