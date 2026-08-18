@@ -35,7 +35,6 @@ import { ExportService } from './services/export.service.js';
 import { AuditService } from './services/audit.service.js';
 import { ActivityService } from './services/activity.service.js';
 import { LotteryService } from './services/lottery.service.js';
-import { VotingService } from './services/voting.service.js';
 
 import multipart from '@fastify/multipart';
 import { AttachmentService } from './services/attachment.service.js';
@@ -103,7 +102,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const attachmentService = new AttachmentService(db, config.STORAGE_PATH);
   const activityService = new ActivityService(db);
   const lotteryService = new LotteryService(db);
-  const votingService = new VotingService(db);
 
   // Security Plugins
   app.register(cors, {
@@ -174,7 +172,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     auditService,
     activityService,
     lotteryService,
-    votingService,
   });
   app.register(adminRoutes, {
     db,
@@ -184,7 +181,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     auditService,
     attachmentService,
     activityService,
-    votingService,
     lotteryService,
   });
 

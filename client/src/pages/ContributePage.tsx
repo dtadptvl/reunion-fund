@@ -1,13 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatVND } from '../utils/format.js';
 
-export const ContributePage: React.FC = () => {
-  const [members, setMembers] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const [isCustomName, setIsCustomName] = useState(false);
-  const [customName, setCustomName] = useState('');
+interface ContributePageProps {
+  currentUser?: any;
+  initialGuestName?: string;
+  onGoToLogin?: () => void;
+}
+
+export const ContributePage: React.FC<ContributePageProps> = ({
+  currentUser,
+  initialGuestName = '',
+  onGoToLogin,
+}) => {
+  // Guest contributor state
+  const [guestName, setGuestName] = useState<string>(initialGuestName);
 
   // Suggested amount from server (loaded dynamically from public config, no stale hardcoded flash)
   const [suggestedAmount, setSuggestedAmount] = useState<number | null>(null);
@@ -20,21 +26,15 @@ export const ContributePage: React.FC = () => {
   const [isPaid, setIsPaid] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Name correction modal state
-  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
-  const [correctingName, setCorrectingName] = useState('');
-  const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState('');
-  const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
+  // Update guest name if initialGuestName prop changes
+  useEffect(() => {
+    if (initialGuestName) {
+      setGuestName(initialGuestName);
+    }
+  }, [initialGuestName]);
 
-  const autocompleteRef = useRef<HTMLDivElement>(null);
-
-  // Fetch roster and suggested config
-  const loadData = () => {
-    fetch('/api/v1/public/members')
-      .then((res) => res.json())
-      .then((data) => setMembers(data.members || []))
-      .catch((err) => console.error(err));
-
+  // Fetch suggested config
+  useEffect(() => {
     fetch('/api/v1/public/config')
       .then((res) => res.json())
       .then((data) => {
@@ -47,21 +47,6 @@ export const ContributePage: React.FC = () => {
         console.error(err);
         setLoadingConfig(false);
       });
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (autocompleteRef.current && !autocompleteRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Poll for payment confirmation once intent created
@@ -83,39 +68,6 @@ export const ContributePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [intentData, isPaid]);
 
-  const removeDiacritics = (str: string) =>
-    str
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D')
-      .toLowerCase();
-
-  const getMemberDisplayName = (m: any) =>
-    m ? `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}` : '';
-
-  const filteredMembers = members.filter((m) => {
-    if (!searchQuery.trim()) return true;
-    const displayName = getMemberDisplayName(m);
-    const q = searchQuery.trim();
-    return (
-      displayName.toLowerCase().includes(q.toLowerCase()) ||
-      removeDiacritics(displayName).includes(removeDiacritics(q))
-    );
-  });
-
-  const handleSelectMember = (memberId: string) => {
-    setSelectedMemberId(memberId);
-    setCorrectionSuccessMsg('');
-    setShowSuggestions(false);
-    const m = members.find((x) => x.id === memberId);
-    if (m) {
-      setSearchQuery(getMemberDisplayName(m));
-    } else if (!memberId) {
-      setSearchQuery('');
-    }
-  };
-
   const handleCreateQR = async () => {
     setErrorMessage('');
     const finalAmount = isCustomAmount ? Number(customAmountInput) : (suggestedAmount || 0);
@@ -125,21 +77,27 @@ export const ContributePage: React.FC = () => {
       return;
     }
 
-    if (!selectedMemberId && (!isCustomName || !customName.trim())) {
-      setErrorMessage('Vui lòng chọn tên trong danh sách hoặc nhập họ tên của bạn');
+    if (!currentUser && !guestName.trim()) {
+      setErrorMessage('Vui lòng nhập họ và tên của bạn để đóng góp với tư cách khách');
       return;
     }
 
     setLoading(true);
     try {
+      const payload = currentUser
+        ? {
+            memberId: currentUser.memberId,
+            amount: finalAmount,
+          }
+        : {
+            customName: guestName.trim(),
+            amount: finalAmount,
+          };
+
       const res = await fetch('/api/v1/public/intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          memberId: isCustomName ? undefined : selectedMemberId,
-          customName: isCustomName ? customName.trim() : undefined,
-          amount: finalAmount,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -154,37 +112,6 @@ export const ContributePage: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const handleSendNameCorrection = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedMemberId || !correctingName.trim()) return;
-
-    setCorrectionSubmitting(true);
-    try {
-      const res = await fetch(`/api/v1/public/members/${selectedMemberId}/correction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestedName: correctingName.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setShowCorrectionModal(false);
-        setCorrectionSuccessMsg(
-          data.message || 'Đã gửi yêu cầu sửa tên. Ban Quản trị sẽ kiểm tra và cập nhật. Bạn vẫn có thể tiếp tục đóng quỹ.'
-        );
-      } else {
-        alert(data.error || 'Có lỗi xảy ra khi gửi yêu cầu');
-      }
-    } catch (err) {
-      alert('Không thể kết nối máy chủ');
-    } finally {
-      setCorrectionSubmitting(false);
-    }
-  };
-
-  const selectedMember = members.find((m) => m.id === selectedMemberId);
 
   return (
     <div style={{ maxWidth: '640px', margin: '0 auto' }}>
@@ -201,205 +128,93 @@ export const ContributePage: React.FC = () => {
 
         {!intentData ? (
           <div>
-            {/* Step 1: Choose Contributor Name */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px' }}>
-                1. Bạn đang đóng quỹ dưới tên ai?
-              </label>
-
-              {!isCustomName ? (
-                <div>
-                  {/* Live Autocomplete Search Input */}
-                  <div ref={autocompleteRef} style={{ position: 'relative', marginBottom: '10px' }}>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <input
-                        type="text"
-                        placeholder="Gõ để tìm tên..."
-                        value={searchQuery}
-                        onFocus={() => setShowSuggestions(true)}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          setShowSuggestions(true);
-                          // If search input value no longer matches currently selected member, reset selection
-                          if (selectedMember && e.target.value !== getMemberDisplayName(selectedMember)) {
-                            setSelectedMemberId('');
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 38px 10px 14px',
-                          borderRadius: 'var(--radius-md)',
-                          border: `1px solid ${selectedMemberId ? 'var(--primary)' : 'var(--border-color)'}`,
-                          fontWeight: selectedMemberId ? 600 : 400,
-                          background: selectedMemberId ? 'var(--bg-card-subtle)' : '#ffffff',
-                        }}
-                      />
-                      {searchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedMemberId('');
-                            setSearchQuery('');
-                            setShowSuggestions(true);
-                            setCorrectionSuccessMsg('');
-                          }}
-                          style={{
-                            position: 'absolute',
-                            right: '10px',
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: 'var(--text-muted)',
-                            fontSize: '1rem',
-                            padding: '4px 6px',
-                          }}
-                          title="Xóa lựa chọn"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Autocomplete Suggestion Dropdown */}
-                    {showSuggestions && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          maxHeight: '220px',
-                          overflowY: 'auto',
-                          background: '#ffffff',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: 'var(--radius-md)',
-                          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-                          zIndex: 50,
-                          marginTop: '4px',
-                        }}
-                      >
-                        {filteredMembers.length > 0 ? (
-                          filteredMembers.map((m) => (
-                            <div
-                              key={m.id}
-                              onClick={() => handleSelectMember(m.id)}
-                              style={{
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid var(--border-color)',
-                                background: m.id === selectedMemberId ? 'var(--primary-bg)' : '#ffffff',
-                                color: m.id === selectedMemberId ? 'var(--primary)' : 'var(--text-main)',
-                                fontWeight: m.id === selectedMemberId ? 700 : 500,
-                              }}
-                              onMouseEnter={(e) => {
-                                if (m.id !== selectedMemberId) e.currentTarget.style.background = 'var(--bg-card-subtle)';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (m.id !== selectedMemberId) e.currentTarget.style.background = '#ffffff';
-                              }}
-                            >
-                              {m.full_name} {m.disambiguator ? `(${m.disambiguator})` : ''}
-                            </div>
-                          ))
-                        ) : (
-                          <div style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                            Không tìm thấy thành viên phù hợp
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Name correction link when member selected */}
-                  {selectedMemberId && selectedMember && (
-                    <div style={{ marginBottom: '12px' }}>
-                      {correctionSuccessMsg ? (
-                        <div style={{ padding: '10px', background: 'var(--primary-bg)', color: 'var(--primary-text)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
-                          ✓ {correctionSuccessMsg}
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCorrectingName(selectedMember.full_name + (selectedMember.disambiguator ? ` (${selectedMember.disambiguator})` : ''));
-                            setShowCorrectionModal(true);
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem',
-                            textDecoration: 'underline',
-                          }}
-                        >
-                          Tên của bạn bị sai? Nhấn vào đây để sửa
-                        </button>
-                      )}
-                    </div>
-                  )}
-
+            {/* Step 1: Contributor Identity */}
+            {currentUser ? (
+              /* Authenticated Member / Admin Flow: Immutable Identity */
+              <div
+                style={{
+                  padding: '16px 20px',
+                  background: 'var(--bg-card-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1.5px solid var(--primary)',
+                  marginBottom: '24px',
+                }}
+              >
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Tài khoản thành viên lớp đã xác thực
+                </div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--primary)' }}>
+                  👤 Bạn đang đóng quỹ với tên: <strong>{currentUser.fullName}</strong>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Khoản đóng sẽ tự động cập nhật vào thông tin cá nhân và tính tỷ lệ quay số may mắn của bạn.
+                </div>
+              </div>
+            ) : (
+              /* Unauthenticated / Guest Flow */
+              <div style={{ marginBottom: '24px' }}>
+                {/* Member Login Callout */}
+                <div
+                  style={{
+                    padding: '14px 16px',
+                    background: 'var(--bg-card-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px dashed var(--border-color)',
+                    marginBottom: '18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                  }}
+                >
                   <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Bạn là thành viên trong danh sách lớp A1?</div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                      Đăng nhập để tự động liên kết đóng góp và nhận quyền lợi thành viên.
+                    </div>
+                  </div>
+                  {onGoToLogin && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsCustomName(true);
-                        setSelectedMemberId('');
-                        setSearchQuery('');
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--primary)',
-                        cursor: 'pointer',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                      }}
+                      className="btn btn-outline"
+                      onClick={onGoToLogin}
+                      style={{ fontWeight: 600, fontSize: '0.85rem' }}
                     >
-                      + Không có tên trong danh sách
+                      Đăng nhập để đóng quỹ
                     </button>
-                  </div>
+                  )}
                 </div>
-              ) : (
+
+                {/* Guest Contributor Name Input */}
                 <div>
+                  <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px' }}>
+                    1. Đóng góp với tư cách khách
+                  </label>
                   <input
                     type="text"
-                    placeholder="Nhập họ và tên của bạn..."
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="Nhập họ và tên hoặc tổ chức của bạn..."
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '10px 14px',
+                      padding: '12px 14px',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid var(--border-color)',
-                      marginBottom: '8px',
+                      fontSize: '1rem',
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomName(false);
-                      setCustomName('');
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--primary)',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    ← Chọn từ danh sách thành viên lớp
-                  </button>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Khách đóng góp sẽ được ghi nhận và vinh danh công khai trên bảng đóng góp.
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Step 2: Choose Contribution Amount (ONLY TWO CHOICES) */}
+            {/* Step 2: Choose Contribution Amount */}
             <div style={{ marginBottom: '28px' }}>
               <label style={{ display: 'block', fontWeight: 700, marginBottom: '10px' }}>
-                2. Chọn số tiền đóng góp
+                {currentUser ? '1.' : '2.'} Chọn số tiền đóng góp
               </label>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -507,6 +322,10 @@ export const ContributePage: React.FC = () => {
 
                 <div style={{ background: 'var(--bg-card-subtle)', padding: '16px', borderRadius: 'var(--radius-md)', textAlign: 'left', marginBottom: '20px' }}>
                   <div style={{ marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Người đóng góp: </span>
+                    <strong>{intentData.contributorName || currentUser?.fullName || guestName}</strong>
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Số tiền: </span>
                     <strong style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>
                       {formatVND(intentData.expectedAmount)}
@@ -534,7 +353,7 @@ export const ContributePage: React.FC = () => {
                   style={{ marginTop: '20px' }}
                   onClick={() => setIntentData(null)}
                 >
-                  ← Đổi số tiền hoặc người đóng khác
+                  ← Đổi số tiền hoặc thông tin đóng góp
                 </button>
               </div>
             ) : (
@@ -561,72 +380,6 @@ export const ContributePage: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Modal: Yêu cầu sửa tên (Chỉ duy nhất 1 ô nhập: Tên đúng của bạn) */}
-      {showCorrectionModal && selectedMember && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
-          <div className="card" style={{ maxWidth: '440px', width: '100%' }}>
-            <div className="card-header">
-              <h2 className="card-title">Sửa tên thành viên</h2>
-              <button
-                type="button"
-                onClick={() => setShowCorrectionModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSendNameCorrection}>
-              <div style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                Tên đang chọn:{' '}
-                <strong style={{ color: 'var(--text-main)' }}>
-                  {selectedMember.full_name}
-                  {selectedMember.disambiguator ? ` (${selectedMember.disambiguator})` : ''}
-                </strong>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                  Tên đúng của bạn
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={correctingName}
-                  onChange={(e) => setCorrectingName(e.target.value)}
-                  placeholder="Nhập tên chính xác của bạn..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '1rem',
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setShowCorrectionModal(false)}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={correctionSubmitting}
-                >
-                  {correctionSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu sửa tên'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

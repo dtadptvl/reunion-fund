@@ -4,8 +4,6 @@ import { formatVND, formatDateVN } from '../utils/format.js';
 interface AdminDashboardProps {
   user: any;
   onLogout: () => void;
-  onGoToVotingResults?: () => void;
-  onGoToPresentation?: () => void;
   onGoToLuckyWheel?: () => void;
 }
 
@@ -33,8 +31,6 @@ const MATCH_METHOD_LABELS: Record<string, string> = {
 export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
   user,
   onLogout,
-  onGoToVotingResults,
-  onGoToPresentation,
   onGoToLuckyWheel,
 }) => {
   const [exceptions, setExceptions] = useState<any>(null);
@@ -321,16 +317,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {onGoToVotingResults && (
-              <button className="btn btn-outline" onClick={onGoToVotingResults} style={{ borderColor: '#eab308', color: '#854d0e', fontWeight: 700 }}>
-                📊 Kết quả bình chọn
-              </button>
-            )}
-            {onGoToPresentation && (
-              <button className="btn btn-primary" onClick={onGoToPresentation} style={{ background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', color: '#000000', fontWeight: 800, border: 'none' }}>
-                🎬 Trình chiếu trao giải
-              </button>
-            )}
             {onGoToLuckyWheel && (
               <button className="btn btn-outline" onClick={onGoToLuckyWheel} style={{ borderColor: '#ec4899', color: '#be185d', fontWeight: 700 }}>
                 🎡 Quản lý quay số

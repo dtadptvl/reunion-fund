@@ -255,6 +255,8 @@ export async function publicRoutes(
     return {
       intentId,
       paymentCode,
+      memberId,
+      externalContributorId,
       expectedAmount: body.amount,
       transferContent,
       bankAccount: config.SEPAY_BANK_ACCOUNT,

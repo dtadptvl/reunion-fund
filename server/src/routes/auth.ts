@@ -4,7 +4,6 @@ import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { ActivityService } from '../services/activity.service.js';
 import { LotteryService } from '../services/lottery.service.js';
-import { VotingService } from '../services/voting.service.js';
 import { config } from '../config/env.js';
 
 export async function authRoutes(
@@ -15,13 +14,11 @@ export async function authRoutes(
     auditService: AuditService;
     activityService?: ActivityService;
     lotteryService?: LotteryService;
-    votingService?: VotingService;
   }
 ) {
   const { db, authService, auditService } = options;
   const activityService = options.activityService || new ActivityService(db);
   const lotteryService = options.lotteryService || new LotteryService(db);
-  const votingService = options.votingService || new VotingService(db);
 
   // In-memory failed login tracking per IP
   const failedLoginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -283,12 +280,21 @@ export async function authRoutes(
       ipAddress: request.ip,
     });
 
+    let canonicalFullName = session.fullName;
+    if (session.memberId) {
+      const m = db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(session.memberId) as any;
+      if (m) {
+        canonicalFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+      }
+    }
+
     const lotteryStats = session.memberId ? lotteryService.getMemberPersonalStats(session.memberId) : null;
 
     return {
       success: true,
       user: {
         ...session,
+        fullName: canonicalFullName,
         totalContributed: lotteryStats?.totalContributed || 0,
         lotteryProbability: lotteryStats?.lotteryProbability || 0,
         lotteryProbabilityDisplay: lotteryStats?.lotteryProbabilityDisplay || '0%',
@@ -336,9 +342,14 @@ export async function authRoutes(
         .all(session.memberId);
     }
 
+    const canonicalDisplayName = memberDetails
+      ? `${memberDetails.full_name}${memberDetails.disambiguator ? ` (${memberDetails.disambiguator})` : ''}`
+      : session.fullName;
+
     return {
       user: {
         ...session,
+        fullName: canonicalDisplayName,
         totalContributed: lotteryStats?.totalContributed || 0,
         lotteryProbability: lotteryStats?.lotteryProbability || 0,
         lotteryProbabilityDisplay: lotteryStats?.lotteryProbabilityDisplay || '0%',
@@ -356,12 +367,16 @@ export async function authRoutes(
     const session = authService.validateSession(sessionToken);
 
     if (!session) {
-      return reply.status(401).send({ error: 'Vui lòng đăng nhập để xem thông tin đăng ký hoạt động.' });
+      return reply.status(401).send({ error: 'Vui lòng đăng nhập để xem trạng thái tham gia.' });
+    }
+
+    if (!session.memberId) {
+      return reply.status(400).send({ error: 'Tài khoản chưa liên kết với thành viên trong danh sách lớp.' });
     }
 
     const isLocked = activityService.isRsvpLocked();
     const activities = activityService.getActivities();
-    const rsvps = session.memberId ? activityService.getMemberRsvps(session.memberId) : [];
+    const rsvps = activityService.getMemberRsvps(session.memberId);
 
     return {
       isLocked,
@@ -370,17 +385,17 @@ export async function authRoutes(
     };
   });
 
-  // 8. Save/Update Member Activity RSVPs
+  // 8. Update Current Member Activity RSVPs
   app.post('/api/v1/auth/rsvps', async (request, reply) => {
     const sessionToken = (request.cookies as any)?.session_token;
     const session = authService.validateSession(sessionToken);
 
     if (!session) {
-      return reply.status(401).send({ error: 'Vui lòng đăng nhập để đăng ký tham gia hoạt động.' });
+      return reply.status(401).send({ error: 'Vui lòng đăng nhập để đăng ký tham gia.' });
     }
 
     if (!session.memberId) {
-      return reply.status(400).send({ error: 'Tài khoản của bạn chưa được liên kết với thành viên trong danh sách lớp.' });
+      return reply.status(400).send({ error: 'Tài khoản chưa liên kết với thành viên trong danh sách lớp.' });
     }
 
     const body = request.body as {
@@ -405,63 +420,6 @@ export async function authRoutes(
       return result;
     } catch (err: any) {
       return reply.status(400).send({ error: err?.message || 'Không thể lưu đăng ký tham gia hoạt động.' });
-    }
-  });
-
-  // 9. Get Voting Categories & Current Member Votes
-  app.get('/api/v1/auth/votes', async (request, reply) => {
-    const sessionToken = (request.cookies as any)?.session_token;
-    const session = authService.validateSession(sessionToken);
-
-    if (!session) {
-      return reply.status(401).send({ error: 'Vui lòng đăng nhập để tham gia bình chọn.' });
-    }
-
-    const categories = votingService.getCategories();
-    const userVotes = votingService.getUserVotes(session.userId);
-    const isLocked = votingService.isVotingLocked();
-
-    return {
-      isLocked,
-      categories,
-      userVotes,
-    };
-  });
-
-  // 10. Cast/Update Member Votes
-  app.post('/api/v1/auth/votes', async (request, reply) => {
-    const sessionToken = (request.cookies as any)?.session_token;
-    const session = authService.validateSession(sessionToken);
-
-    if (!session) {
-      return reply.status(401).send({ error: 'Vui lòng đăng nhập để bình chọn.' });
-    }
-
-    if (!session.memberId) {
-      return reply.status(400).send({ error: 'Tài khoản chưa liên kết với thành viên trong danh sách lớp.' });
-    }
-
-    const body = request.body as {
-      votes?: Array<{
-        categoryId: string;
-        candidateMemberId: string;
-      }>;
-    };
-
-    if (!body || !Array.isArray(body.votes) || body.votes.length === 0) {
-      return reply.status(400).send({ error: 'Dữ liệu bình chọn không hợp lệ.' });
-    }
-
-    try {
-      const result = votingService.castVotes(
-        session.userId,
-        session.memberId,
-        body.votes,
-        session.username
-      );
-      return result;
-    } catch (err: any) {
-      return reply.status(400).send({ error: err?.message || 'Không thể lưu bình chọn.' });
     }
   });
 }

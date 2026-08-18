@@ -133,16 +133,20 @@ describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', ()
 
   // F & G. "Không có tên trong danh sách" available and NO old select dropdown rendered
   it('F & G: "Không có tên trong danh sách" is present and old member dropdown is completely removed', () => {
+    const registerPagePath = path.resolve(__dirname, '../../client/src/pages/RegisterPage.tsx');
+    const registerCode = fs.readFileSync(registerPagePath, 'utf-8');
+
     const contributePagePath = path.resolve(__dirname, '../../client/src/pages/ContributePage.tsx');
     const contributeCode = fs.readFileSync(contributePagePath, 'utf-8');
 
     // Verify old select element is removed
     expect(contributeCode.includes('-- Chọn thành viên lớp --')).toBe(false);
     expect(contributeCode.includes('<select')).toBe(false);
+    expect(registerCode.includes('<select')).toBe(false);
 
-    // Verify "Không có tên trong danh sách" flow is present
-    expect(contributeCode.includes('Không có tên trong danh sách')).toBe(true);
-    expect(contributeCode.includes('isCustomName')).toBe(true);
+    // Verify "Không có tên trong danh sách" flow is present in register autocomplete
+    expect(registerCode.includes('Không có tên trong danh sách')).toBe(true);
+    expect(registerCode.includes('isGuestMode')).toBe(true);
   });
 
   // H. Name correction remains functional

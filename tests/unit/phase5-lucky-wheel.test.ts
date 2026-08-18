@@ -254,7 +254,7 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     } catch { /* ignore */ }
   });
 
-  it('7. Staging Lottery Reset: deletes draw history and audits reset without touching contributions', async () => {
+  it('7. Official Admin Lottery Reset: deletes draw history and audits reset without touching contributions', async () => {
     const members = memberService.searchMembers('', 5);
     members.slice(0, 3).forEach((m) => {
       insertContribution(db, m.id, 500000);
@@ -264,13 +264,8 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     lotteryService.triggerDraw('giai-ba', 'admin');
     expect(lotteryService.getCompletedDraws()).toHaveLength(1);
 
-    // Reset when not allowed -> throws error
-    expect(() => lotteryService.resetLotteryState('admin', false)).toThrowError(
-      'Chức năng đặt lại chỉ khả dụng trong môi trường kiểm thử/staging.'
-    );
-
-    // Reset when allowed -> succeeds
-    lotteryService.resetLotteryState('admin_tester', true);
+    // Official Admin Reset -> succeeds
+    lotteryService.resetLotteryState('admin_tester');
 
     expect(lotteryService.getCompletedDraws()).toHaveLength(0);
 
@@ -279,7 +274,7 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(totalContributed.total).toBe(1500000);
 
     // Audit log created
-    const resetAudit = db.prepare("SELECT * FROM audit_logs WHERE action = 'RESET_LUCKY_WHEEL_TEST_STATE'").get() as any;
+    const resetAudit = db.prepare("SELECT * FROM audit_logs WHERE action = 'RESET_LUCKY_WHEEL'").get() as any;
     expect(resetAudit).toBeDefined();
     expect(resetAudit.actor).toBe('admin_tester');
   });
@@ -312,8 +307,8 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(finishedState.completedPrizes).toHaveLength(3);
     expect(finishedState.hasBackgroundMusic).toBe(true);
 
-    // 2. Perform staging reset
-    lotteryService.resetLotteryState('admin_tester', true);
+    // 2. Perform official admin reset
+    lotteryService.resetLotteryState('admin_tester');
 
     const resetState = lotteryService.getPublicWheelState();
     expect(resetState.status).toBe('IDLE');

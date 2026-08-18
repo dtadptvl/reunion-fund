@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { formatVND } from '../utils/format.js';
 
 interface LuckyWheelSegment {
   memberId: string;
@@ -81,12 +82,12 @@ const SEGMENT_COLORS = [
   '#dc2626', '#ea580c', '#d97706', '#059669', '#0891b2',
   '#2563eb', '#4f46e5', '#7c3aed', '#c026d3', '#e11d48',
   '#0d9488', '#65a30d', '#ca8a04', '#9333ea', '#0284c7',
-  '#16a34a', '#f97316', '#3b82f6', '#8b5cf6', '#db2777'
+  '#16a34a', '#f97316', '#3b82f6', '#8b5cf6', '#db2777',
+  '#e11d48', '#0284c7', '#10b981', '#f59e0b', '#6366f1'
 ];
 
 export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) => {
   const [wheelState, setWheelState] = useState<LuckyWheelState | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
   const [currentRotation, setCurrentRotation] = useState<number>(0);
   const [isSpinningLocal, setIsSpinningLocal] = useState<boolean>(false);
   const [revealedWinner, setRevealedWinner] = useState<{
@@ -103,6 +104,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
   // Admin draw trigger & reset state
   const [triggering, setTriggering] = useState<boolean>(false);
   const [resetting, setResetting] = useState<boolean>(false);
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [adminMessage, setAdminMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Native Audio player state
@@ -122,7 +124,6 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       if (res.ok) {
         const data: LuckyWheelState = await res.json();
         setWheelState(data);
-        setLoading(false);
         setMusicAvailable(Boolean(data.hasBackgroundMusic));
 
         // Handle Active Draw Animation
@@ -150,37 +151,20 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               });
             }
           }
-        } else {
-          // If no active draw (e.g. after reset)
-          setRevealedWinner(null);
-          setIsSpinningLocal(false);
-          lastActiveDrawStartedAt.current = null;
         }
       }
     } catch (err) {
-      console.error('Error fetching wheel state:', err);
+      console.error('Error fetching lucky wheel state:', err);
     }
   };
 
   useEffect(() => {
     fetchWheelState();
-    const interval = setInterval(fetchWheelState, 1500);
+    const interval = setInterval(fetchWheelState, 2000);
     return () => clearInterval(interval);
   }, []);
 
-  // Sync fullscreen change with presentation state
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && isPresentationMode) {
-        // user pressed ESC to exit fullscreen
-        setIsPresentationMode(false);
-      }
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [isPresentationMode]);
-
-  // 2. Start Spin Animation Synchronized to Duration
+  // 2. Wheel Spin Animation
   const startSpinAnimation = (
     targetAngleDeg: number,
     totalDurationSec: number,
@@ -188,18 +172,17 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     activeDrawData: any
   ) => {
     setIsSpinningLocal(true);
-    setRevealedWinner(null); // Keep winner hidden while spinning
+    setRevealedWinner(null);
 
-    // Pointer is at the top (270 degrees)
-    const desiredFinalAngle = (270 - targetAngleDeg + 360) % 360;
-    const fullSpins = totalDurationSec >= 30 ? 24 : totalDurationSec >= 20 ? 18 : 12;
-    const finalTotalRotation = fullSpins * 360 + desiredFinalAngle;
+    const fullRotations = 8 * 360;
+    const finalAngle = (360 - (targetAngleDeg % 360) + 270) % 360;
+    const finalTotalRotation = fullRotations + finalAngle;
 
     const startTimestamp = performance.now() - elapsedMs;
 
     const animate = (now: number) => {
       const progress = Math.min(1, (now - startTimestamp) / (totalDurationSec * 1000));
-      // Cubic ease-out curve for dramatic deceleration
+      // Cubic ease-out curve for smooth deceleration
       const easeOut = 1 - Math.pow(1 - progress, 3);
       const angle = easeOut * finalTotalRotation;
       setCurrentRotation(angle);
@@ -229,7 +212,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     };
   }, []);
 
-  // 3. Render Canvas Wheel with Upright Legible Typography
+  // 3. Render Canvas Wheel with Adaptive Upright Typography & Number Badges for ~20 participants
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !wheelState) return;
@@ -251,8 +234,9 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     ctx.rotate((currentRotation * Math.PI) / 180);
 
     const segments = wheelState.wheelSegments || [];
+    const count = segments.length;
 
-    if (segments.length === 0) {
+    if (count === 0) {
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, 2 * Math.PI);
       ctx.fillStyle = '#1e293b';
@@ -285,7 +269,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
-      // Draw Text on Segment — Upright Alignment
+      // Draw Text or Numbered Badge on Segment
       ctx.save();
       const midAngleRad = startRad + (endRad - startRad) / 2;
       const midAngleDeg = (seg.startAngle + seg.endAngle) / 2;
@@ -293,11 +277,13 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
 
       ctx.rotate(midAngleRad);
 
-      // Only draw inline text if segment is wide enough (>= 6 deg)
-      if (angleSpanDeg >= 6) {
-        // Prevent upside down text: flip by 180 deg when midAngle is between 90 and 270 deg
-        const isFlipped = midAngleDeg > 90 && midAngleDeg < 270;
+      // Adaptive text strategy:
+      // If <= 10 members and segment wide enough: render full readable name
+      // If 11-20 members or narrow segment: render clear numbered badge (#1, #2, ...)
+      const isFlipped = midAngleDeg > 90 && midAngleDeg < 270;
 
+      if (count <= 10 && angleSpanDeg >= 12) {
+        // Render readable full name
         if (isFlipped) {
           ctx.rotate(Math.PI);
           ctx.textAlign = 'left';
@@ -309,22 +295,46 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
         ctx.shadowBlur = 6;
 
-        const fontSize = angleSpanDeg < 12 ? 11 : angleSpanDeg < 20 ? 13 : 15;
+        const fontSize = angleSpanDeg < 18 ? 12 : 14;
         ctx.font = `bold ${fontSize}px sans-serif`;
 
         const displayName = `${seg.fullName}${seg.disambiguator ? ` (${seg.disambiguator})` : ''}`;
-        const nameText = angleSpanDeg < 10 ? displayName.split(' ').slice(-1)[0] : displayName;
+        const nameText = angleSpanDeg < 15 ? displayName.split(' ').slice(-1)[0] : displayName;
 
         const textX = isFlipped ? -radius + 20 : radius - 20;
-        const textY = angleSpanDeg >= 16 ? -4 : fontSize / 3;
+        const textY = angleSpanDeg >= 20 ? -4 : fontSize / 3;
 
         ctx.fillText(nameText, textX, textY);
 
-        // Render percentage if segment has enough height
-        if (angleSpanDeg >= 14) {
+        if (angleSpanDeg >= 18) {
           ctx.font = `bold ${fontSize - 2}px sans-serif`;
           ctx.fillStyle = '#fef08a';
           ctx.fillText(seg.probabilityDisplay, textX, textY + fontSize + 2);
+        }
+      } else {
+        // Render crisp numbered marker / badge (#1, #2...)
+        if (isFlipped) {
+          ctx.rotate(Math.PI);
+          ctx.textAlign = 'left';
+        } else {
+          ctx.textAlign = 'right';
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        ctx.shadowBlur = 6;
+
+        const badgeText = `#${i + 1}`;
+        const badgeSize = angleSpanDeg < 10 ? 11 : 13;
+        ctx.font = `bold ${badgeSize}px sans-serif`;
+
+        const badgeX = isFlipped ? -radius + 20 : radius - 20;
+        ctx.fillText(badgeText, badgeX, badgeSize / 3);
+
+        if (angleSpanDeg >= 16) {
+          ctx.font = `bold ${badgeSize - 2}px sans-serif`;
+          ctx.fillStyle = '#fef08a';
+          ctx.fillText(seg.probabilityDisplay, badgeX, badgeSize + 2);
         }
       }
 
@@ -354,72 +364,53 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     ctx.stroke();
 
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 16px sans-serif';
+    ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('12A1', 0, 0);
+
     ctx.restore();
   }, [wheelState, currentRotation]);
 
-  // Presentation Start: Native Audio Play + Enter Fullscreen Mode
+  // 4. Handle Presentation Start & Background Music
   const handleStartPresentation = () => {
     setShowStartOverlay(false);
     setIsPresentationMode(true);
 
-    if (audioRef.current && wheelState?.hasBackgroundMusic) {
-      audioRef.current.play().then(() => {
-        setMusicPlaying(true);
-      }).catch((e) => {
-        console.warn('Audio playback not started:', e);
-      });
+    if (audioRef.current && musicAvailable) {
+      audioRef.current.volume = 0.7;
+      audioRef.current.play()
+        .then(() => setMusicPlaying(true))
+        .catch((err) => console.warn('Autoplay prevented:', err));
     }
 
-    if (!document.fullscreenElement) {
+    if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
   };
 
-  // Toggle Audio Play/Pause
   const handleToggleMusic = () => {
     if (!audioRef.current) return;
     if (musicPlaying) {
       audioRef.current.pause();
       setMusicPlaying(false);
     } else {
-      audioRef.current.play().then(() => {
-        setMusicPlaying(true);
-      }).catch(() => {});
+      audioRef.current.play()
+        .then(() => setMusicPlaying(true))
+        .catch(() => {});
     }
   };
 
-  // Toggle Audio Mute
   const handleToggleMute = () => {
     if (!audioRef.current) return;
-    audioRef.current.muted = !audioRef.current.muted;
-    setMusicMuted(audioRef.current.muted);
+    audioRef.current.muted = !musicMuted;
+    setMusicMuted(!musicMuted);
   };
 
-  // Toggle Fullscreen / Presentation Mode
-  const togglePresentation = () => {
-    if (!isPresentationMode) {
-      setIsPresentationMode(true);
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      }
-    } else {
-      setIsPresentationMode(false);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
-    }
-  };
-
-  // Admin Trigger Draw
+  // 5. Admin Trigger Draw Action
   const handleTriggerDraw = async (prizeId: string) => {
-    if (triggering || isSpinningLocal) return;
     setTriggering(true);
     setAdminMessage(null);
-
     try {
       const res = await fetch('/api/v1/admin/lottery/draw', {
         method: 'POST',
@@ -427,86 +418,48 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         body: JSON.stringify({ prizeId }),
       });
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Không thể thực hiện quay số.');
+      if (res.ok) {
+        await fetchWheelState();
+      } else {
+        setAdminMessage({ text: data.error || 'Lỗi khi kích hoạt quay thưởng', type: 'error' });
       }
-
-      await fetchWheelState();
-    } catch (err: any) {
-      setAdminMessage({ text: err.message || 'Lỗi khi kích hoạt quay thưởng.', type: 'error' });
+    } catch (err) {
+      setAdminMessage({ text: 'Lỗi kết nối máy chủ', type: 'error' });
     } finally {
       setTriggering(false);
     }
   };
 
-  // Admin Staging Reset
+  // 6. Admin Official Lottery Reset Action
   const handleResetLottery = async () => {
-    const confirmed = window.confirm(
-      '⚠️ XÁC NHẬN ĐẶT LẠI KẾT QUẢ QUAY THỬ?\n\nToàn bộ kết quả Giải Ba, Giải Nhì, Giải Nhất sẽ bị xóa để kiểm thử lại từ đầu. Danh sách đóng góp và quỹ lớp hoàn toàn không bị ảnh hưởng.'
-    );
-    if (!confirmed) return;
-
     setResetting(true);
     setAdminMessage(null);
-
+    setShowResetModal(false);
     try {
-      const res = await fetch('/api/v1/admin/lottery/reset', { method: 'POST' });
+      const res = await fetch('/api/v1/admin/lottery/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Không thể đặt lại kết quả.');
+      if (res.ok) {
+        setAdminMessage({ text: 'Đã đặt lại kết quả quay thưởng thành công.', type: 'success' });
+        setRevealedWinner(null);
+        setCurrentRotation(0);
+        await fetchWheelState();
+      } else {
+        setAdminMessage({ text: data.error || 'Lỗi khi đặt lại kết quả', type: 'error' });
       }
-
-      setCurrentRotation(0);
-      setRevealedWinner(null);
-      setIsSpinningLocal(false);
-      lastActiveDrawStartedAt.current = null;
-      setAdminMessage({ text: 'Đã đặt lại kết quả quay thử thành công! Bắt đầu lại từ Giải Ba.', type: 'success' });
-      await fetchWheelState();
-    } catch (err: any) {
-      setAdminMessage({ text: err.message || 'Lỗi khi đặt lại kết quả.', type: 'error' });
+    } catch (err) {
+      setAdminMessage({ text: 'Lỗi kết nối máy chủ', type: 'error' });
     } finally {
       setResetting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #090d16 0%, #0f172a 50%, #1e1b4b 100%)',
-          color: '#ffffff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '1.2rem',
-        }}
-      >
-        Đang tải vòng quay may mắn...
-      </div>
-    );
-  }
-
   const isAdmin = currentUser?.role === 'ADMIN';
-  const completedCount = wheelState?.completedPrizes?.length || 0;
-  const isCompletedAll = completedCount >= 3 || (!wheelState?.nextPrize && completedCount > 0);
-
-  // Active prize title resolution
-  const activePrizeTitle = isSpinningLocal
-    ? (wheelState?.activeDraw?.prizeTitle || wheelState?.nextPrize?.prizeTitle || 'Hạng Mục Quay Thưởng')
-    : wheelState?.nextPrize
-    ? wheelState.nextPrize.prizeTitle
-    : 'Chương Trình Quay Thưởng';
-
-  // Completed prizes display list: hide current spinning prize until revealed
-  const displayedCompletedPrizes = (wheelState?.completedPrizes || []).filter((p) => {
-    if (isSpinningLocal && wheelState?.activeDraw?.prizeId === p.prizeId) {
-      return false; // Hide from history while animation is running
-    }
-    return true;
-  });
+  const isCompletedAll = wheelState?.status === 'FINISHED' || (!wheelState?.nextPrize && (wheelState?.completedPrizes?.length || 0) >= 3);
+  const activePrize = wheelState?.nextPrize;
+  const segments = wheelState?.wheelSegments || [];
 
   return (
     <div
@@ -580,7 +533,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             🎡 VÒNG QUAY MAY MẮN
           </h1>
           <p style={{ maxWidth: '620px', color: '#cbd5e1', fontSize: '1.05rem', lineHeight: 1.6, marginBottom: '28px' }}>
-            Chào mừng bạn đến với chương trình quay số tri ân tập thể lớp A1. Nhấn nút bên dưới để bắt đầu giao diện trình chiếu sân khấu (16:9) và tự động phát nhạc nền gala.
+            Chào mừng bạn đến với chương trình quay số tri ân tập thể lớp A1. Nhấn nút bên dưới để mở giao diện trình chiếu sân khấu (16:9) và tự động phát nhạc nền gala.
           </p>
           <button
             onClick={handleStartPresentation}
@@ -608,7 +561,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       <div
         style={{
           width: '100%',
-          maxWidth: '1500px',
+          maxWidth: '1560px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -616,7 +569,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           gap: '10px',
           paddingBottom: '8px',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          marginBottom: '10px',
+          marginBottom: '8px',
           flexShrink: 0,
         }}
       >
@@ -641,7 +594,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           </span>
         </div>
 
-        {/* Center: Stage Status & Prize Title */}
+        {/* Center: Stage Status */}
         <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {isSpinningLocal ? (
             <span
@@ -650,13 +603,13 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                 color: '#ffffff',
                 fontWeight: 800,
                 fontSize: '0.95rem',
-                padding: '4px 16px',
+                padding: '4px 18px',
                 borderRadius: '20px',
                 animation: 'pulse 1.2s infinite ease-in-out',
                 boxShadow: '0 0 15px rgba(239, 68, 68, 0.6)',
               }}
             >
-              ⏳ ĐANG QUAY {activePrizeTitle.toUpperCase()}...
+              ⏳ ĐANG QUAY {(activePrize?.prizeTitle || 'GIẢI THƯỞNG').toUpperCase()}...
             </span>
           ) : isCompletedAll ? (
             <span
@@ -670,7 +623,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                 boxShadow: '0 0 15px rgba(22, 163, 74, 0.5)',
               }}
             >
-              ✓ ĐÃ HOÀN TẤT QUAY THƯỞNG
+              ✓ ĐÃ HOÀN TẤT TẤT CẢ CÁC GIẢI THƯỞNG
             </span>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -678,44 +631,39 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                 HẠNG MỤC TIẾP THEO:
               </span>
               <strong style={{ fontSize: '1.05rem', color: '#ffffff', fontWeight: 800 }}>
-                {activePrizeTitle}
+                {activePrize?.prizeTitle || 'GIẢI BA'}
               </strong>
-              {wheelState?.nextPrize && (
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                  ({wheelState.nextPrize.durationSeconds}s)
-                </span>
-              )}
             </div>
           )}
         </div>
 
-        {/* Right Controls: Audio + Fullscreen + Admin Trigger */}
+        {/* Right Controls: Admin Triggers + Music + Screen */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* Admin Draw Action (Compact) */}
-          {isAdmin && wheelState?.nextPrize && (
+          {/* Admin Draw Action (Strict Exact Button Text) */}
+          {isAdmin && activePrize && !isSpinningLocal && (
             <button
-              onClick={() => handleTriggerDraw(wheelState.nextPrize!.prizeId)}
+              onClick={() => handleTriggerDraw(activePrize.prizeId)}
               disabled={triggering || isSpinningLocal}
               style={{
-                background: isSpinningLocal ? '#475569' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                 color: '#ffffff',
                 fontWeight: 800,
                 fontSize: '0.85rem',
                 padding: '6px 16px',
                 borderRadius: '20px',
                 border: '1px solid #60a5fa',
-                cursor: isSpinningLocal ? 'not-allowed' : 'pointer',
-                boxShadow: isSpinningLocal ? 'none' : '0 0 15px rgba(37, 99, 235, 0.5)',
+                cursor: 'pointer',
+                boxShadow: '0 0 15px rgba(37, 99, 235, 0.5)',
               }}
             >
-              {triggering ? 'Đang kích hoạt...' : `🎯 Quay ${wheelState.nextPrize.prizeTitle}`}
+              {triggering ? 'Đang kích hoạt...' : `Bắt đầu quay ${activePrize.prizeTitle}`}
             </button>
           )}
 
-          {/* Staging Reset Button */}
-          {isAdmin && wheelState?.allowTestReset && (
+          {/* Official Admin Reset Button */}
+          {isAdmin && (
             <button
-              onClick={handleResetLottery}
+              onClick={() => setShowResetModal(true)}
               disabled={resetting || isSpinningLocal}
               style={{
                 background: 'rgba(239, 68, 68, 0.15)',
@@ -727,9 +675,8 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                 fontWeight: 600,
                 cursor: 'pointer',
               }}
-              title="Đặt lại kết quả quay thử"
             >
-              {resetting ? 'Đang đặt lại...' : '🔄 Đặt lại'}
+              {resetting ? 'Đang đặt lại...' : 'Đặt lại kết quả'}
             </button>
           )}
 
@@ -748,6 +695,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                   fontWeight: 600,
                   cursor: 'pointer',
                 }}
+                title={musicPlaying ? 'Tạm dừng nhạc nền' : 'Phát nhạc nền'}
               >
                 {musicPlaying ? '⏸ Tạm dừng' : '▶ Phát nhạc'}
               </button>
@@ -755,8 +703,8 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               <button
                 onClick={handleToggleMute}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  background: musicMuted ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                  border: `1px solid ${musicMuted ? '#ef4444' : 'rgba(255, 255, 255, 0.2)'}`,
                   color: '#ffffff',
                   padding: '5px 10px',
                   borderRadius: '16px',
@@ -769,18 +717,23 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               </button>
             </>
           ) : (
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
               🔇 Nhạc nền chưa khả dụng
             </span>
           )}
 
-          {/* Fullscreen / Toggle Presentation */}
+          {/* Presentation Toggle */}
           <button
-            onClick={togglePresentation}
+            onClick={() => {
+              if (isPresentationMode && document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+              }
+              setIsPresentationMode(!isPresentationMode);
+            }}
             style={{
-              background: isPresentationMode ? 'rgba(234, 179, 8, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-              border: `1px solid ${isPresentationMode ? '#eab308' : 'rgba(255, 255, 255, 0.2)'}`,
-              color: isPresentationMode ? '#fef08a' : '#ffffff',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#ffffff',
               padding: '5px 12px',
               borderRadius: '16px',
               fontSize: '0.8rem',
@@ -788,33 +741,46 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               cursor: 'pointer',
             }}
           >
-            {isPresentationMode ? '✕ Thu nhỏ' : '🎬 Trình chiếu'}
+            {isPresentationMode ? '✕ Thu nhỏ' : '⛶ Toàn màn hình'}
           </button>
         </div>
       </div>
 
+      {/* Admin Status Toast */}
       {adminMessage && (
-        <div style={{ fontSize: '0.85rem', color: adminMessage.type === 'success' ? '#86efac' : '#fca5a5', fontWeight: 600, marginBottom: '6px' }}>
+        <div
+          style={{
+            padding: '6px 16px',
+            borderRadius: '16px',
+            marginBottom: '6px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            background: adminMessage.type === 'error' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)',
+            border: `1px solid ${adminMessage.type === 'error' ? '#ef4444' : '#10b981'}`,
+            color: adminMessage.type === 'error' ? '#fca5a5' : '#86efac',
+          }}
+        >
           {adminMessage.text}
         </div>
       )}
 
-      {/* MAIN STAGE (LANDSCAPE 2-COLUMN COMPOSITION) */}
+      {/* MAIN 16:9 SPLIT PRESENTATION LAYOUT */}
       <div
         style={{
           width: '100%',
-          maxWidth: '1500px',
+          maxWidth: '1560px',
           flex: 1,
-          minHeight: 0,
           display: 'grid',
-          gridTemplateColumns: isPresentationMode ? 'minmax(340px, 1fr) minmax(380px, 1.15fr)' : 'repeat(auto-fit, minmax(340px, 1fr))',
-          gap: '20px',
+          gridTemplateColumns: isPresentationMode ? '56% 44%' : 'minmax(0, 1.2fr) minmax(0, 1fr)',
+          gap: '16px',
           alignItems: 'center',
-          boxSizing: 'border-box',
           overflow: 'hidden',
+          minHeight: 0,
         }}
       >
-        {/* LEFT COLUMN: LARGE LUCKY WHEEL */}
+        {/* ========================================================================= */}
+        {/* LEFT COLUMN: LARGE LUCKY WHEEL CANVAS */}
+        {/* ========================================================================= */}
         <div
           style={{
             display: 'flex',
@@ -823,33 +789,39 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             justifyContent: 'center',
             position: 'relative',
             height: '100%',
-            maxHeight: isPresentationMode ? 'calc(100vh - 90px)' : 'auto',
+            maxHeight: 'calc(100vh - 80px)',
           }}
         >
-          {/* Top Pointer Arrow */}
+          {/* Top Golden Arrow Pointer */}
           <div
             style={{
-              position: 'absolute',
-              top: '-12px',
-              zIndex: 30,
-              width: 0,
-              height: 0,
-              borderLeft: '18px solid transparent',
-              borderRight: '18px solid transparent',
-              borderTop: '34px solid #ef4444',
-              filter: 'drop-shadow(0 4px 10px rgba(0, 0, 0, 0.9))',
+              position: 'relative',
+              zIndex: 20,
+              marginBottom: '-26px',
+              filter: 'drop-shadow(0 4px 10px rgba(0, 0, 0, 0.8))',
             }}
-          />
+          >
+            <div
+              style={{
+                width: 0,
+                height: 0,
+                borderLeft: '20px solid transparent',
+                borderRight: '20px solid transparent',
+                borderTop: '36px solid #eab308',
+              }}
+            />
+          </div>
 
+          {/* Canvas Element */}
           <div
             style={{
-              width: isPresentationMode ? 'min(66vh, 500px)' : 'min(88vw, 460px)',
-              height: isPresentationMode ? 'min(66vh, 500px)' : 'min(88vw, 460px)',
-              aspectRatio: '1/1',
+              position: 'relative',
+              width: '100%',
+              maxWidth: 'min(70vh, 560px)',
+              aspectRatio: '1 / 1',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              position: 'relative',
             }}
           >
             <canvas
@@ -857,215 +829,336 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               style={{
                 width: '100%',
                 height: '100%',
+                display: 'block',
                 borderRadius: '50%',
-                boxShadow: isSpinningLocal
-                  ? '0 0 50px rgba(234, 179, 8, 0.6), 0 0 80px rgba(59, 130, 246, 0.3)'
-                  : '0 8px 35px rgba(0, 0, 0, 0.6)',
-                transition: isSpinningLocal ? 'none' : 'box-shadow 0.4s ease',
+                boxShadow: '0 0 45px rgba(234, 179, 8, 0.3)',
               }}
             />
           </div>
         </div>
 
-        {/* RIGHT COLUMN: REVEAL + PARTICIPANTS + HALL OF FAME */}
+        {/* ========================================================================= */}
+        {/* RIGHT COLUMN: PRIZE / WINNER / ADAPTIVE LEGEND / COMPACT HALL OF FAME */}
+        {/* ========================================================================= */}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px',
+            gap: '10px',
             height: '100%',
-            maxHeight: isPresentationMode ? 'calc(100vh - 90px)' : 'auto',
+            maxHeight: 'calc(100vh - 80px)',
             justifyContent: 'space-between',
-            overflow: 'hidden',
+            overflowY: 'auto',
+            paddingRight: '4px',
           }}
         >
-          {/* 1. WINNER REVEAL CELEBRATION (IF REVEALED) */}
-          {revealedWinner && !isSpinningLocal && (
+          {/* 1. Winner Reveal Celebration Banner (Appears when active draw completes) */}
+          {revealedWinner && (
             <div
               style={{
-                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.22) 0%, rgba(202, 138, 4, 0.38) 100%)',
+                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(202, 138, 4, 0.35) 100%)',
                 border: '2px solid #facc15',
-                borderRadius: '14px',
-                padding: '12px 18px',
+                borderRadius: '12px',
+                padding: '12px 16px',
                 textAlign: 'center',
-                boxShadow: '0 0 35px rgba(234, 179, 8, 0.5)',
-                animation: 'fadeInUp 0.5s ease',
-                flexShrink: 0,
+                boxShadow: '0 0 25px rgba(234, 179, 8, 0.5)',
+                animation: 'winnerPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
               }}
             >
-              <div style={{ fontSize: '0.85rem', color: '#fef08a', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase' }}>
-                🎉 CHÚC MỪNG CHIẾN THẮNG {revealedWinner.prizeTitle.toUpperCase()} 🎉
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fef08a', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                🎉 CHÚC MỪNG {revealedWinner.prizeTitle.toUpperCase()}!
               </div>
               <div
                 style={{
-                  fontSize: 'clamp(1.6rem, 3.2vw, 2.4rem)',
+                  fontSize: 'clamp(1.4rem, 2.5vw, 2rem)',
                   fontWeight: 900,
                   color: '#ffffff',
                   margin: '4px 0',
-                  textShadow: '0 2px 20px rgba(255, 255, 255, 0.85)',
+                  textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)',
                 }}
               >
                 {revealedWinner.name}
                 {revealedWinner.disambiguator && (
-                  <span style={{ fontSize: '1.1rem', opacity: 0.85, marginLeft: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#fef08a', marginLeft: '6px', fontWeight: 700 }}>
                     ({revealedWinner.disambiguator})
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: '0.85rem', color: '#fef08a', fontWeight: 700 }}>
-                Mức đóng góp hợp lệ: <strong>{revealedWinner.weight.toLocaleString('vi-VN')} đ</strong>
+              <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
+                Đóng góp hợp lệ: <strong style={{ color: '#86efac' }}>{formatVND(revealedWinner.weight)}</strong>
               </div>
             </div>
           )}
 
-          {/* 2. ELIGIBLE MEMBERS LEGEND & LIVE STATS */}
+          {/* 2. Adaptive Participants Legend (2-Column Grid for up to ~20 members) */}
           <div
             style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(15, 23, 42, 0.75)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '12px',
-              padding: '12px 16px',
+              padding: '10px 14px',
               display: 'flex',
               flexDirection: 'column',
               flex: 1,
-              minHeight: '120px',
-              maxHeight: isPresentationMode
-                ? (revealedWinner ? '22vh' : '36vh')
-                : '300px',
-              overflow: 'hidden',
+              minHeight: 0,
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
-              <h2 style={{ fontSize: '0.92rem', fontWeight: 800, color: '#fef08a', margin: 0 }}>
-                📋 THÀNH VIÊN THAM GIA ({wheelState?.wheelSegments.length || 0})
-              </h2>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                Tổng: {wheelState?.totalEligibleWeight.toLocaleString('vi-VN')} đ
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                DANH SÁCH THAM GIA ({segments.length} THÀNH VIÊN)
+              </span>
+              <span style={{ fontSize: '0.75rem', color: '#fbbf24', fontWeight: 600 }}>
+                Tổng quỹ quay: {formatVND(wheelState?.totalEligibleWeight || 0)}
               </span>
             </div>
 
-            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {wheelState?.wheelSegments.map((seg, idx) => {
-                const swatchColor = SEGMENT_COLORS[idx % SEGMENT_COLORS.length];
-                return (
-                  <div
-                    key={seg.memberId}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      padding: '6px 10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: swatchColor, flexShrink: 0 }} />
-                      <span style={{ fontWeight: 600 }}>
-                        {seg.fullName}
-                        {seg.disambiguator && (
-                          <span style={{ opacity: 0.7, fontSize: '0.75rem', marginLeft: '4px' }}>
-                            ({seg.disambiguator})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 800, color: '#fef08a', marginRight: '8px' }}>
-                        {seg.probabilityDisplay}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                        {seg.weight.toLocaleString('vi-VN')} đ
-                      </span>
-                    </div>
+            {/* 2-Column Grid of Members with Number Badges & Probabilities */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: segments.length > 8 ? 'repeat(2, 1fr)' : '1fr',
+                gap: '4px 8px',
+                overflowY: 'auto',
+                paddingRight: '2px',
+                maxHeight: isPresentationMode ? '28vh' : '220px',
+              }}
+            >
+              {segments.map((seg, idx) => (
+                <div
+                  key={seg.memberId}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '3px 6px',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '4px',
+                        background: SEGMENT_COLORS[idx % SEGMENT_COLORS.length],
+                        color: '#ffffff',
+                        fontSize: '0.65rem',
+                        fontWeight: 800,
+                        textAlign: 'center',
+                        lineHeight: '18px',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color: '#ffffff',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={`${seg.fullName}${seg.disambiguator ? ` (${seg.disambiguator})` : ''}`}
+                    >
+                      {seg.fullName}
+                      {seg.disambiguator && (
+                        <span style={{ color: '#fef08a', fontSize: '0.72rem', marginLeft: '3px' }}>
+                          ({seg.disambiguator})
+                        </span>
+                      )}
+                    </span>
                   </div>
-                );
-              })}
+                  <span style={{ color: '#86efac', fontWeight: 700, flexShrink: 0, marginLeft: '6px' }}>
+                    {seg.probabilityDisplay}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* 3. COMPLETED PRIZES RESULTS (3 CARDS SIDE BY SIDE) */}
+          {/* 3. Completed Prizes / Hall of Fame (Compact 3 Cards in 1 Row) */}
           <div
             style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(15, 23, 42, 0.75)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '12px',
-              padding: '12px 16px',
-              flexShrink: 0,
+              padding: '10px 14px',
             }}
           >
-            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fef08a', marginBottom: '8px' }}>
-              🏆 BẢNG VINH DANH TRÚNG THƯỞNG
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
+              🏆 KẾT QUẢ CÁC HẠNG MỤC
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-              {renderPrizeCard('Giải Ba', 'giai-ba', displayedCompletedPrizes)}
-              {renderPrizeCard('Giải Nhì', 'giai-nhi', displayedCompletedPrizes)}
-              {renderPrizeCard('Giải Nhất', 'giai-nhat', displayedCompletedPrizes)}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+              {/* Prize 1: Giải Ba */}
+              {(() => {
+                const draw = (wheelState?.completedPrizes || []).find((p) => p.prizeId === 'giai-ba');
+                return (
+                  <div
+                    style={{
+                      background: draw ? 'rgba(202, 138, 4, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                      border: `1px solid ${draw ? '#ca8a04' : 'rgba(255, 255, 255, 0.08)'}`,
+                      borderRadius: '8px',
+                      padding: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fef08a' }}>🥉 GIẢI BA</div>
+                    {draw ? (
+                      <div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {draw.winnerName}
+                        </div>
+                        {draw.winnerDisambiguator && (
+                          <div style={{ fontSize: '0.7rem', color: '#fef08a' }}>({draw.winnerDisambiguator})</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px' }}>Chưa quay</div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Prize 2: Giải Nhì */}
+              {(() => {
+                const draw = (wheelState?.completedPrizes || []).find((p) => p.prizeId === 'giai-nhi');
+                return (
+                  <div
+                    style={{
+                      background: draw ? 'rgba(148, 163, 184, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                      border: `1px solid ${draw ? '#94a3b8' : 'rgba(255, 255, 255, 0.08)'}`,
+                      borderRadius: '8px',
+                      padding: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#e2e8f0' }}>🥈 GIẢI NHÌ</div>
+                    {draw ? (
+                      <div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {draw.winnerName}
+                        </div>
+                        {draw.winnerDisambiguator && (
+                          <div style={{ fontSize: '0.7rem', color: '#fef08a' }}>({draw.winnerDisambiguator})</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px' }}>Chưa quay</div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Prize 3: Giải Nhất */}
+              {(() => {
+                const draw = (wheelState?.completedPrizes || []).find((p) => p.prizeId === 'giai-nhat');
+                return (
+                  <div
+                    style={{
+                      background: draw ? 'rgba(234, 179, 8, 0.25)' : 'rgba(255, 255, 255, 0.03)',
+                      border: `1px solid ${draw ? '#facc15' : 'rgba(255, 255, 255, 0.08)'}`,
+                      borderRadius: '8px',
+                      padding: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fbbf24' }}>🥇 GIẢI NHẤT</div>
+                    {draw ? (
+                      <div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {draw.winnerName}
+                        </div>
+                        {draw.winnerDisambiguator && (
+                          <div style={{ fontSize: '0.7rem', color: '#fef08a' }}>({draw.winnerDisambiguator})</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px' }}>Chưa quay</div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
 
-function renderPrizeCard(
-  title: string,
-  prizeId: string,
-  completed?: CompletedPrize[]
-) {
-  const winner = completed?.find((p) => p.prizeId === prizeId);
-
-  return (
-    <div
-      style={{
-        background: winner ? 'rgba(234, 179, 8, 0.12)' : 'rgba(0, 0, 0, 0.3)',
-        border: winner ? '1px solid #eab308' : '1px dashed rgba(255, 255, 255, 0.15)',
-        borderRadius: '8px',
-        padding: '8px 10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#facc15', textTransform: 'uppercase' }}>
-          {title}
-        </span>
-        {winner ? (
-          <span style={{ fontSize: '0.68rem', background: '#166534', color: '#bbf7d0', padding: '1px 6px', borderRadius: '8px', fontWeight: 600 }}>
-            ✓ Đã có
-          </span>
-        ) : (
-          <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
-            Chưa quay
-          </span>
-        )}
-      </div>
-
-      {winner ? (
-        <>
-          <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            👑 {winner.winnerName}
-            {winner.winnerDisambiguator && (
-              <span style={{ fontSize: '0.75rem', opacity: 0.8, marginLeft: '3px' }}>
-                ({winner.winnerDisambiguator})
-              </span>
-            )}
+      {/* Confirmation Modal: Official Admin Lottery Reset */}
+      {showResetModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1200,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              background: '#0f172a',
+              border: '1px solid #ef4444',
+              borderRadius: '16px',
+              padding: '24px',
+              maxWidth: '460px',
+              width: '100%',
+              textAlign: 'center',
+              boxShadow: '0 10px 40px rgba(239, 68, 68, 0.3)',
+            }}
+          >
+            <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>⚠️</div>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fca5a5', margin: '0 0 10px 0' }}>
+              Xác Nhận Đặt Lại Kết Quả Vòng Quay
+            </h2>
+            <p style={{ fontSize: '0.9rem', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '20px' }}>
+              Hành động này sẽ xóa toàn bộ kết quả của <strong>Giải Ba, Giải Nhì và Giải Nhất</strong> để bắt đầu quay lại từ đầu. Toàn bộ tiền đóng góp, tỷ lệ thành viên và nhạc nền vẫn được giữ nguyên.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: '#ffffff',
+                  padding: '10px 20px',
+                  borderRadius: '10px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleResetLottery}
+                disabled={resetting}
+                style={{
+                  background: '#dc2626',
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '10px 24px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 0 15px rgba(220, 38, 38, 0.5)',
+                }}
+              >
+                {resetting ? 'Đang đặt lại...' : 'Xác nhận Đặt lại'}
+              </button>
+            </div>
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-            <strong style={{ color: '#fef08a' }}>{winner.winnerWeight.toLocaleString('vi-VN')} đ</strong>
-          </div>
-        </>
-      ) : (
-        <div style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic', padding: '4px 0' }}>
-          Đang chờ...
         </div>
       )}
     </div>
   );
-}
+};

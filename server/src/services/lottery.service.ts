@@ -550,13 +550,11 @@ export class LotteryService {
   }
 
   /**
-   * Resets lucky wheel test state (STAGING ONLY gate).
+   * Resets lucky wheel results (Official Admin feature).
+   * Resets only draw results (Giải Ba, Giải Nhì, Giải Nhất), returning all eligible members to wheel pool.
+   * Preserves persistent music, contributions, members, RSVP, financial and SePay data.
    */
-  resetLotteryState(actor: string, isAllowed: boolean): void {
-    if (!isAllowed) {
-      throw new Error('Chức năng đặt lại chỉ khả dụng trong môi trường kiểm thử/staging.');
-    }
-
+  resetLotteryState(actor: string): void {
     const tx = this.db.transaction(() => {
       this.db.prepare('DELETE FROM lucky_wheel_draws').run();
 
@@ -567,11 +565,11 @@ export class LotteryService {
       `).run(
         crypto.randomUUID(),
         actor,
-        'RESET_LUCKY_WHEEL_TEST_STATE',
+        'RESET_LUCKY_WHEEL',
         'LUCKY_WHEEL',
-        'ALL',
-        null,
-        JSON.stringify({ resetAt: new Date().toISOString() })
+        'ALL_PRIZES',
+        JSON.stringify({ reset: true }),
+        JSON.stringify({ status: 'RESET_SUCCESS', resetAt: new Date().toISOString() })
       );
     });
 
@@ -837,7 +835,7 @@ export class LotteryService {
       nextPrize,
       hasBackgroundMusic: Boolean(musicMeta),
       backgroundMusicMetadata: musicMeta,
-      allowTestReset: config.ALLOW_LOTTERY_TEST_RESET,
+      allowTestReset: true,
       activeDraw: activeDrawInfo,
       wheelSegments: segments,
       totalEligibleWeight: totalWeight,
