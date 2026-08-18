@@ -77,7 +77,7 @@ interface LuckyWheelPageProps {
   currentUser?: any;
 }
 
-// Vivid high-contrast palette for wheel segments
+// 25 Vivid high-contrast projector-ready palette
 const SEGMENT_COLORS = [
   '#dc2626', '#ea580c', '#d97706', '#059669', '#0891b2',
   '#2563eb', '#4f46e5', '#7c3aed', '#c026d3', '#e11d48',
@@ -212,7 +212,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     };
   }, []);
 
-  // 3. Render Canvas Wheel with Adaptive Upright Typography & Number Badges for ~20 participants
+  // 3. Render Canvas Wheel with PURE NUMBER BADGES (No names, no percentages, always UPRIGHT)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !wheelState) return;
@@ -228,15 +228,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
 
     ctx.clearRect(0, 0, size, size);
 
-    // Rotate context to current spin rotation
-    ctx.save();
-    ctx.translate(center, center);
-    ctx.rotate((currentRotation * Math.PI) / 180);
-
     const segments = wheelState.wheelSegments || [];
     const count = segments.length;
 
     if (count === 0) {
+      ctx.save();
+      ctx.translate(center, center);
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, 2 * Math.PI);
       ctx.fillStyle = '#1e293b';
@@ -253,7 +250,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       return;
     }
 
-    // Draw Wheel Segments
+    // Step A: Draw Wheel Segments (Rotated with Current Spin)
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.rotate((currentRotation * Math.PI) / 180);
+
     segments.forEach((seg, i) => {
       const startRad = (seg.startAngle * Math.PI) / 180;
       const endRad = (seg.endAngle * Math.PI) / 180;
@@ -268,82 +269,47 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
-
-      // Draw Text or Numbered Badge on Segment
-      ctx.save();
-      const midAngleRad = startRad + (endRad - startRad) / 2;
-      const midAngleDeg = (seg.startAngle + seg.endAngle) / 2;
-      const angleSpanDeg = seg.endAngle - seg.startAngle;
-
-      ctx.rotate(midAngleRad);
-
-      // Adaptive text strategy:
-      // If <= 10 members and segment wide enough: render full readable name
-      // If 11-20 members or narrow segment: render clear numbered badge (#1, #2, ...)
-      const isFlipped = midAngleDeg > 90 && midAngleDeg < 270;
-
-      if (count <= 10 && angleSpanDeg >= 12) {
-        // Render readable full name
-        if (isFlipped) {
-          ctx.rotate(Math.PI);
-          ctx.textAlign = 'left';
-        } else {
-          ctx.textAlign = 'right';
-        }
-
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-        ctx.shadowBlur = 6;
-
-        const fontSize = angleSpanDeg < 18 ? 12 : 14;
-        ctx.font = `bold ${fontSize}px sans-serif`;
-
-        const displayName = `${seg.fullName}${seg.disambiguator ? ` (${seg.disambiguator})` : ''}`;
-        const nameText = angleSpanDeg < 15 ? displayName.split(' ').slice(-1)[0] : displayName;
-
-        const textX = isFlipped ? -radius + 20 : radius - 20;
-        const textY = angleSpanDeg >= 20 ? -4 : fontSize / 3;
-
-        ctx.fillText(nameText, textX, textY);
-
-        if (angleSpanDeg >= 18) {
-          ctx.font = `bold ${fontSize - 2}px sans-serif`;
-          ctx.fillStyle = '#fef08a';
-          ctx.fillText(seg.probabilityDisplay, textX, textY + fontSize + 2);
-        }
-      } else {
-        // Render crisp numbered marker / badge (#1, #2...)
-        if (isFlipped) {
-          ctx.rotate(Math.PI);
-          ctx.textAlign = 'left';
-        } else {
-          ctx.textAlign = 'right';
-        }
-
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-        ctx.shadowBlur = 6;
-
-        const badgeText = `#${i + 1}`;
-        const badgeSize = angleSpanDeg < 10 ? 11 : 13;
-        ctx.font = `bold ${badgeSize}px sans-serif`;
-
-        const badgeX = isFlipped ? -radius + 20 : radius - 20;
-        ctx.fillText(badgeText, badgeX, badgeSize / 3);
-
-        if (angleSpanDeg >= 16) {
-          ctx.font = `bold ${badgeSize - 2}px sans-serif`;
-          ctx.fillStyle = '#fef08a';
-          ctx.fillText(seg.probabilityDisplay, badgeX, badgeSize + 2);
-        }
-      }
-
-      ctx.restore();
     });
 
     ctx.restore();
 
-    // Outer Golden Ring
+    // Step B: Draw Number Labels on Segments (ALWAYS UPRIGHT, NEVER UPSIDE-DOWN OR INVERTED)
+    segments.forEach((seg, i) => {
+      const midAngleDeg = (seg.startAngle + seg.endAngle) / 2;
+      const angleSpanDeg = seg.endAngle - seg.startAngle;
+
+      // Absolute angle in canvas coordinate space
+      const currentCanvasAngleDeg = (currentRotation + midAngleDeg) % 360;
+      const currentCanvasAngleRad = (currentCanvasAngleDeg * Math.PI) / 180;
+
+      // Position number at 0.62 * radius from center (visually centered in wedge)
+      const labelRadius = radius * 0.62;
+      const x = center + labelRadius * Math.cos(currentCanvasAngleRad);
+      const y = center + labelRadius * Math.sin(currentCanvasAngleRad);
+
+      // Adaptive font size based on segment width (clamped between 15px and 24px)
+      const fontSize = Math.max(15, Math.min(24, Math.floor(angleSpanDeg * 1.25)));
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      // Draw high-contrast backdrop shadow & crisp bold upright number
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 2;
+      ctx.font = `900 ${fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Render ONLY the participant number
+      ctx.fillText(`${i + 1}`, 0, 0);
+
+      ctx.restore();
+    });
+
+    // Step C: Outer Golden Rim
     ctx.save();
     ctx.translate(center, center);
     ctx.beginPath();
@@ -351,12 +317,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     ctx.lineWidth = 10;
     ctx.strokeStyle = '#facc15';
     ctx.shadowColor = 'rgba(234, 179, 8, 0.6)';
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 16;
     ctx.stroke();
 
-    // Center Hub
+    // Step D: Center Hub "12A1"
     ctx.beginPath();
-    ctx.arc(0, 0, 42, 0, 2 * Math.PI);
+    ctx.arc(0, 0, 44, 0, 2 * Math.PI);
     ctx.fillStyle = '#0f172a';
     ctx.fill();
     ctx.lineWidth = 4;
@@ -364,7 +330,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     ctx.stroke();
 
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 15px sans-serif';
+    ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('12A1', 0, 0);
@@ -479,6 +445,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           : {
               minHeight: '100vh',
               padding: '20px 16px 40px',
+              boxSizing: 'border-box',
             }),
         background: 'linear-gradient(135deg, #070a12 0%, #0f172a 50%, #1e1b4b 100%)',
         color: '#ffffff',
@@ -513,6 +480,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             justifyContent: 'center',
             padding: '24px',
             textAlign: 'center',
+            boxSizing: 'border-box',
           }}
         >
           <div style={{ fontSize: '0.95rem', letterSpacing: '3px', textTransform: 'uppercase', color: '#fbbf24', fontWeight: 700, marginBottom: '12px' }}>
@@ -571,6 +539,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           marginBottom: '8px',
           flexShrink: 0,
+          boxSizing: 'border-box',
         }}
       >
         {/* Left Badge */}
@@ -758,6 +727,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             background: adminMessage.type === 'error' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)',
             border: `1px solid ${adminMessage.type === 'error' ? '#ef4444' : '#10b981'}`,
             color: adminMessage.type === 'error' ? '#fca5a5' : '#86efac',
+            boxSizing: 'border-box',
           }}
         >
           {adminMessage.text}
@@ -771,11 +741,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           maxWidth: '1560px',
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: isPresentationMode ? '56% 44%' : 'minmax(0, 1.2fr) minmax(0, 1fr)',
+          gridTemplateColumns: isPresentationMode ? '55% 45%' : 'minmax(0, 1.2fr) minmax(0, 1fr)',
           gap: '16px',
           alignItems: 'center',
           overflow: 'hidden',
           minHeight: 0,
+          boxSizing: 'border-box',
         }}
       >
         {/* ========================================================================= */}
@@ -790,6 +761,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             position: 'relative',
             height: '100%',
             maxHeight: 'calc(100vh - 80px)',
+            boxSizing: 'border-box',
           }}
         >
           {/* Top Golden Arrow Pointer */}
@@ -822,6 +794,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxSizing: 'border-box',
             }}
           >
             <canvas
@@ -849,10 +822,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             maxHeight: 'calc(100vh - 80px)',
             justifyContent: 'space-between',
             overflowY: 'auto',
-            paddingRight: '4px',
+            padding: '2px 4px 2px 2px',
+            boxSizing: 'border-box',
+            width: '100%',
           }}
         >
-          {/* 1. Winner Reveal Celebration Banner (Appears when active draw completes) */}
+          {/* 1. Winner Reveal Celebration Banner (Box-Sizing Safe, Full Visible Borders on All 4 Sides) */}
           {revealedWinner && (
             <div
               style={{
@@ -863,6 +838,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                 textAlign: 'center',
                 boxShadow: '0 0 25px rgba(234, 179, 8, 0.5)',
                 animation: 'winnerPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                boxSizing: 'border-box',
+                width: '100%',
+                margin: '0',
+                overflow: 'hidden',
+                wordBreak: 'break-word',
               }}
             >
               <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fef08a', textTransform: 'uppercase', letterSpacing: '1px' }}>
@@ -870,11 +850,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               </div>
               <div
                 style={{
-                  fontSize: 'clamp(1.4rem, 2.5vw, 2rem)',
+                  fontSize: 'clamp(1.3rem, 2.2vw, 1.85rem)',
                   fontWeight: 900,
                   color: '#ffffff',
                   margin: '4px 0',
                   textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)',
+                  lineHeight: 1.25,
                 }}
               >
                 {revealedWinner.name}
@@ -890,7 +871,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             </div>
           )}
 
-          {/* 2. Adaptive Participants Legend (2-Column Grid for up to ~20 members) */}
+          {/* 2. Adaptive Participants Legend (Sorted by Highest Win Probability Descending) */}
           <div
             style={{
               background: 'rgba(15, 23, 42, 0.75)',
@@ -901,9 +882,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               flexDirection: 'column',
               flex: 1,
               minHeight: 0,
+              boxSizing: 'border-box',
+              width: '100%',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 DANH SÁCH THAM GIA ({segments.length} THÀNH VIÊN)
               </span>
@@ -912,15 +895,16 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               </span>
             </div>
 
-            {/* 2-Column Grid of Members with Number Badges & Probabilities */}
+            {/* 2-Column Responsive Grid of Members (Sorted by Probability Descending) */}
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: segments.length > 8 ? 'repeat(2, 1fr)' : '1fr',
-                gap: '4px 8px',
+                gap: '6px 10px',
                 overflowY: 'auto',
                 paddingRight: '2px',
-                maxHeight: isPresentationMode ? '28vh' : '220px',
+                maxHeight: isPresentationMode ? '32vh' : '260px',
+                boxSizing: 'border-box',
               }}
             >
               {segments.map((seg, idx) => (
@@ -930,26 +914,31 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '3px 6px',
-                    borderRadius: '6px',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    fontSize: '0.78rem',
+                    padding: '5px 8px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    fontSize: '0.8rem',
+                    boxSizing: 'border-box',
+                    gap: '8px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                  {/* Left: Number badge + Full Name */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', overflow: 'hidden', minWidth: 0 }}>
                     <span
                       style={{
                         display: 'inline-block',
-                        width: '18px',
-                        height: '18px',
-                        borderRadius: '4px',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '5px',
                         background: SEGMENT_COLORS[idx % SEGMENT_COLORS.length],
                         color: '#ffffff',
-                        fontSize: '0.65rem',
-                        fontWeight: 800,
+                        fontSize: '0.7rem',
+                        fontWeight: 900,
                         textAlign: 'center',
-                        lineHeight: '18px',
+                        lineHeight: '20px',
                         flexShrink: 0,
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.4)',
                       }}
                     >
                       {idx + 1}
@@ -972,9 +961,24 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                       )}
                     </span>
                   </div>
-                  <span style={{ color: '#86efac', fontWeight: 700, flexShrink: 0, marginLeft: '6px' }}>
-                    {seg.probabilityDisplay}
-                  </span>
+
+                  {/* Right: Contribution Amount + Win Probability % */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                      {formatVND(seg.weight)}
+                    </span>
+                    <span
+                      style={{
+                        color: '#86efac',
+                        fontWeight: 800,
+                        fontSize: '0.82rem',
+                        minWidth: '50px',
+                        textAlign: 'right',
+                      }}
+                    >
+                      {seg.probabilityDisplay}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -987,13 +991,15 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '12px',
               padding: '10px 14px',
+              boxSizing: 'border-box',
+              width: '100%',
             }}
           >
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
               🏆 KẾT QUẢ CÁC HẠNG MỤC
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', boxSizing: 'border-box' }}>
               {/* Prize 1: Giải Ba */}
               {(() => {
                 const draw = (wheelState?.completedPrizes || []).find((p) => p.prizeId === 'giai-ba');
@@ -1005,6 +1011,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                       borderRadius: '8px',
                       padding: '8px',
                       textAlign: 'center',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fef08a' }}>🥉 GIẢI BA</div>
@@ -1035,6 +1042,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                       borderRadius: '8px',
                       padding: '8px',
                       textAlign: 'center',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#e2e8f0' }}>🥈 GIẢI NHÌ</div>
@@ -1065,6 +1073,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                       borderRadius: '8px',
                       padding: '8px',
                       textAlign: 'center',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fbbf24' }}>🥇 GIẢI NHẤT</div>
@@ -1101,6 +1110,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             alignItems: 'center',
             justifyContent: 'center',
             padding: '16px',
+            boxSizing: 'border-box',
           }}
         >
           <div
@@ -1113,6 +1123,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               width: '100%',
               textAlign: 'center',
               boxShadow: '0 10px 40px rgba(239, 68, 68, 0.3)',
+              boxSizing: 'border-box',
             }}
           >
             <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>⚠️</div>

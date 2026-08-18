@@ -286,6 +286,11 @@ export async function authRoutes(
       if (m) {
         canonicalFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
       }
+    } else if (session.role === 'ADMIN') {
+      const defaultAdmin = db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+      if (defaultAdmin) {
+        canonicalFullName = defaultAdmin.full_name;
+      }
     }
 
     const lotteryStats = session.memberId ? lotteryService.getMemberPersonalStats(session.memberId) : null;
@@ -344,6 +349,8 @@ export async function authRoutes(
 
     const canonicalDisplayName = memberDetails
       ? `${memberDetails.full_name}${memberDetails.disambiguator ? ` (${memberDetails.disambiguator})` : ''}`
+      : session.role === 'ADMIN'
+      ? ((db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any)?.full_name || session.fullName)
       : session.fullName;
 
     return {

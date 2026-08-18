@@ -57,8 +57,16 @@ export class AuthService {
     }
   }
 
-  async seedInitialStaff(username: string, passwordHash?: string, fullName = 'Admin Lớp A1'): Promise<boolean> {
+  async seedInitialStaff(username: string, passwordHash?: string, fullName = 'Dương Tuấn Anh'): Promise<boolean> {
     if (!this.db.open) return false;
+
+    // Find Dương Tuấn Anh in canonical members table
+    const tuanAnh = this.db
+      .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
+      .get() as { id: string; full_name: string } | undefined;
+
+    const finalFullName = tuanAnh ? tuanAnh.full_name : fullName;
+    const finalMemberId = tuanAnh ? tuanAnh.id : null;
 
     // Check staff_users table
     const existingStaff = this.db.prepare('SELECT id FROM staff_users WHERE username = ?').get(username);
@@ -74,25 +82,40 @@ export class AuthService {
           INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
           VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
         `)
-        .run(id, username, finalHash, fullName);
+        .run(id, username, finalHash, finalFullName);
+    } else {
+      this.db
+        .prepare(`
+          UPDATE staff_users SET password_hash = ?, full_name = ? WHERE username = ?
+        `)
+        .run(finalHash, finalFullName, username);
     }
 
-    // Also ensure admin exists in users table
-    const existingUser = this.db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    // If another account is duplicate-linked to tuanAnh, decouple it safely
+    if (!this.db.open) return false;
+    if (finalMemberId) {
+      this.db
+        .prepare('UPDATE users SET member_id = NULL, role = \'MEMBER\' WHERE member_id = ? AND username != ?')
+        .run(finalMemberId, username);
+    }
+
+    // Also ensure admin exists in users table linked to Dương Tuấn Anh
+    if (!this.db.open) return false;
+    const existingUser = this.db.prepare('SELECT id FROM users WHERE username = ?').get(username) as { id: string } | undefined;
     if (!existingUser) {
       const id = crypto.randomUUID();
       this.db
         .prepare(`
           INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified, created_at, updated_at)
-          VALUES (?, NULL, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          VALUES (?, ?, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `)
-        .run(id, username, `${username}@reunion.local`, finalHash, fullName);
+        .run(id, finalMemberId, username, `${username}@reunion.local`, finalHash, finalFullName);
     } else {
       this.db
         .prepare(`
-          UPDATE users SET password_hash = ?, role = 'ADMIN', status = 'ACTIVE', email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE username = ?
+          UPDATE users SET member_id = ?, password_hash = ?, full_name = ?, role = 'ADMIN', status = 'ACTIVE', email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE username = ?
         `)
-        .run(finalHash, username);
+        .run(finalMemberId, finalHash, finalFullName, username);
     }
 
     this.seedDefaultAdmins();
@@ -102,6 +125,8 @@ export class AuthService {
   seedDefaultAdmins(): void {
     if (!this.db.open) return;
 
+    const adminMemberIds: string[] = [];
+
     for (const adminName of DEFAULT_ADMIN_NAMES) {
       const normalized = removeVietnameseDiacritics(adminName);
       const members = this.db
@@ -109,11 +134,20 @@ export class AuthService {
         .all(normalized) as MemberRow[];
 
       for (const m of members) {
-        // Upgrade any user accounts linked to this member to ADMIN role
+        adminMemberIds.push(m.id);
+        // Upgrade accounts linked to this member to ADMIN role and sync canonical name
         this.db
-          .prepare("UPDATE users SET role = 'ADMIN', updated_at = CURRENT_TIMESTAMP WHERE member_id = ?")
-          .run(m.id);
+          .prepare("UPDATE users SET role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE member_id = ?")
+          .run(m.full_name, m.id);
       }
+    }
+
+    // Downgrade any non-default-admin member accounts to MEMBER role
+    if (adminMemberIds.length > 0) {
+      const placeholders = adminMemberIds.map(() => '?').join(',');
+      this.db
+        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE member_id IS NOT NULL AND member_id NOT IN (${placeholders}) AND role = 'ADMIN'`)
+        .run(...adminMemberIds);
     }
   }
 

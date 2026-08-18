@@ -105,15 +105,15 @@ describe('V2 Phase 1 — Member Accounts & Admin Roles', () => {
     expect(loginResult.session?.memberId).toBe(memberBich.id);
   });
 
-  it('registers default ADMIN member (Dương Tuấn Anh) with ADMIN role automatically', async () => {
-    const members = memberService.searchMembers('Dương Tuấn Anh', 10);
-    const tuanAnh = members.find((m) => m.full_name === 'Dương Tuấn Anh')!;
-    expect(tuanAnh).toBeDefined();
+  it('registers default ADMIN member (Hoàng Thị Nhàn) with ADMIN role automatically', async () => {
+    const members = memberService.searchMembers('Hoàng Thị Nhàn', 10);
+    const nhan = members.find((m) => m.full_name === 'Hoàng Thị Nhàn')!;
+    expect(nhan).toBeDefined();
 
     const regResult = await authService.registerMember({
-      memberId: tuanAnh.id,
-      username: 'tuananh_admin',
-      email: 'tuananh@example.com',
+      memberId: nhan.id,
+      username: 'nhan_admin',
+      email: 'nhan_adm@example.com',
       password: 'adminpassword123',
     });
 
@@ -127,7 +127,7 @@ describe('V2 Phase 1 — Member Accounts & Admin Roles', () => {
     expect(verifyResult.user.role).toBe('ADMIN');
 
     // Authenticate
-    const loginResult = await authService.authenticate('tuananh_admin', 'adminpassword123');
+    const loginResult = await authService.authenticate('nhan_admin', 'adminpassword123');
     expect(loginResult.status).toBe('SUCCESS');
     expect(loginResult.session?.role).toBe('ADMIN');
   });

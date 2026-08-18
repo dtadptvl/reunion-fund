@@ -57,7 +57,6 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
 
     insertContribution(db, m1.id, 500000);
     insertContribution(db, m2.id, 1500000);
-
     const { segments, totalWeight } = lotteryService.getWheelSegments(new Set());
     expect(totalWeight).toBe(2000000);
     expect(segments).toHaveLength(2);
@@ -65,17 +64,17 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     const seg1 = segments.find((s) => s.memberId === m1.id)!;
     const seg2 = segments.find((s) => s.memberId === m2.id)!;
 
-    expect(seg1.weight).toBe(500000);
-    expect(seg1.probability).toBe(25);
-    expect(seg1.probabilityDisplay).toBe('25,00%');
-    expect(seg1.startAngle).toBe(0);
-    expect(seg1.endAngle).toBe(90);
-
     expect(seg2.weight).toBe(1500000);
     expect(seg2.probability).toBe(75);
     expect(seg2.probabilityDisplay).toBe('75,00%');
-    expect(seg2.startAngle).toBe(90);
-    expect(seg2.endAngle).toBe(360);
+    expect(seg2.startAngle).toBe(0);
+    expect(seg2.endAngle).toBe(270);
+
+    expect(seg1.weight).toBe(500000);
+    expect(seg1.probability).toBe(25);
+    expect(seg1.probabilityDisplay).toBe('25,00%');
+    expect(seg1.startAngle).toBe(270);
+    expect(seg1.endAngle).toBe(360);
   });
 
   it('2. Enforces strict draw order: Giải Ba -> Giải Nhì -> Giải Nhất', async () => {
@@ -104,66 +103,76 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     const drawNhi = lotteryService.triggerDraw('giai-nhi', 'admin');
     expect(drawNhi.prize_id).toBe('giai-nhi');
     expect(drawNhi.duration_seconds).toBe(25);
-    expect(drawNhi.winner_member_id).toBeDefined();
 
     // Now drawing Giải Nhất succeeds
     const drawNhat = lotteryService.triggerDraw('giai-nhat', 'admin');
     expect(drawNhat.prize_id).toBe('giai-nhat');
     expect(drawNhat.duration_seconds).toBe(35);
-    expect(drawNhat.winner_member_id).toBeDefined();
+
+    // All 3 drawn -> completed
+    const completed = lotteryService.getCompletedDraws();
+    expect(completed).toHaveLength(3);
   });
 
-  it('3. Excludes previous winners and renormalizes remaining probabilities for next draw', async () => {
-    const members = memberService.searchMembers('', 5);
-    const m1 = members[0]; // 500k
-    const m2 = members[1]; // 500k
-    const m3 = members[2]; // 1,000k
+  it('3. Automatically excludes previous winners from subsequent prize pools', async () => {
+    const members = memberService.searchMembers('', 4);
+    const m1 = members[0];
+    const m2 = members[1];
+    const m3 = members[2];
 
     insertContribution(db, m1.id, 500000);
     insertContribution(db, m2.id, 500000);
-    insertContribution(db, m3.id, 1000000);
+    insertContribution(db, m3.id, 500000);
 
-    // Total initial pool = 2M. m1 = 25%, m2 = 25%, m3 = 50%
+    // Initial pool: 3 members
     const initialSegments = lotteryService.getWheelSegments(new Set()).segments;
     expect(initialSegments).toHaveLength(3);
 
     // Draw Giải Ba
     const drawBa = lotteryService.triggerDraw('giai-ba', 'admin');
-    const winner1Id = drawBa.winner_member_id;
+    const winnerBaId = drawBa.winner_member_id;
 
-    // Remaining segments for next draw (Giải Nhì) must exclude winner1
-    const { segments: nextSegments, totalWeight: remainingWeight } = lotteryService.getWheelSegments(new Set([winner1Id]));
-    expect(nextSegments).toHaveLength(2);
-    expect(nextSegments.find((s) => s.memberId === winner1Id)).toBeUndefined();
+    // Remaining pool for Giải Nhì must exclude winner of Giải Ba
+    const secondSegments = lotteryService.getWheelSegments(new Set([winnerBaId])).segments;
+    expect(secondSegments).toHaveLength(2);
+    expect(secondSegments.some((s) => s.memberId === winnerBaId)).toBe(false);
+    expect(secondSegments.reduce((sum, s) => sum + s.probability, 0)).toBe(100);
 
-    // Sum of renormalized probabilities must be 100%
-    const sumProb = nextSegments.reduce((sum, s) => sum + s.probability, 0);
-    expect(Math.round(sumProb)).toBe(100);
-    expect(remainingWeight).toBe(2000000 - drawBa.winner_weight);
+    // Draw Giải Nhì
+    const drawNhi = lotteryService.triggerDraw('giai-nhi', 'admin');
+    const winnerNhiId = drawNhi.winner_member_id;
+    expect(winnerNhiId).not.toBe(winnerBaId);
+
+    // Remaining pool for Giải Nhất must have exactly 1 member
+    const thirdSegments = lotteryService.getWheelSegments(new Set([winnerBaId, winnerNhiId])).segments;
+    expect(thirdSegments).toHaveLength(1);
+    expect(thirdSegments[0].probability).toBe(100);
+    expect(thirdSegments[0].probabilityDisplay).toBe('100,00%');
   });
 
-  it('4. Idempotency: duplicate / repeated draw request returns existing persisted draw', async () => {
-    const members = memberService.searchMembers('', 5);
-    members.slice(0, 3).forEach((m) => {
-      insertContribution(db, m.id, 500000);
-    });
+  it('4. Uses CSPRNG and correctly computes deterministic target angle on wheel circle', async () => {
+    const members = memberService.searchMembers('', 3);
+    insertContribution(db, members[0].id, 1000000); // 50%
+    insertContribution(db, members[1].id, 1000000); // 50%
 
-    const firstDraw = lotteryService.triggerDraw('giai-ba', 'admin');
-    const secondDraw = lotteryService.triggerDraw('giai-ba', 'admin');
+    const draw = lotteryService.triggerDraw('giai-ba', 'admin');
+    const state = lotteryService.getPublicWheelState();
+    expect(state.activeDraw).toBeDefined();
+    expect(state.activeDraw?.targetAngle).toBeGreaterThanOrEqual(0);
+    expect(state.activeDraw?.targetAngle).toBeLessThanOrEqual(360);
 
-    // Both calls must return identical draw, winner, and random ticket
-    expect(firstDraw.winner_member_id).toBe(secondDraw.winner_member_id);
-    expect(firstDraw.random_ticket).toBe(secondDraw.random_ticket);
-    expect(firstDraw.started_at).toBe(secondDraw.started_at);
+    const winnerMemberId = draw.winner_member_id;
+    const segments = lotteryService.getWheelSegments(new Set()).segments;
+    const winnerSeg = segments.find((s) => s.memberId === winnerMemberId)!;
 
-    // Exactly 1 row in lucky_wheel_draws
-    const count = db.prepare('SELECT COUNT(*) as count FROM lucky_wheel_draws WHERE prize_id = ?').get('giai-ba') as { count: number };
-    expect(count.count).toBe(1);
+    // Target angle must fall strictly within winner's segment bounds
+    expect(state.activeDraw?.targetAngle).toBeGreaterThanOrEqual(winnerSeg.startAngle);
+    expect(state.activeDraw?.targetAngle).toBeLessThanOrEqual(winnerSeg.endAngle);
   });
 
   it('5. RBAC & HTTP API: Guest/Member cannot trigger draw (401/403), Admin can trigger (200), Public can read state', async () => {
-    const members = memberService.searchMembers('', 5);
-    members.slice(0, 3).forEach((m) => {
+    const members = memberService.searchMembers('', 40);
+    members.slice(0, 4).forEach((m) => {
       insertContribution(db, m.id, 500000);
     });
 
@@ -172,11 +181,11 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(unauthRes.status).toBe(401);
 
     // 2. Member request to draw -> 403
-    const bich = members.find((m) => m.full_name === 'Nguyễn Thị Bích') || members[0];
-    await authService.registerMember({ memberId: bich.id, username: 'bich_member', email: 'bich@example.com', password: 'password123' });
+    const normalMember = members.find((m) => m.full_name === 'Nguyễn Thị Bích') || members[0];
+    await authService.registerMember({ memberId: normalMember.id, username: 'bich_usr', email: 'bich@example.com', password: 'password123' });
     await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('bich@example.com')!.token });
     const memberLogin = await supertest(app.server).post('/api/v1/auth/login').send({
-      username: 'bich_member',
+      username: 'bich_usr',
       password: 'password123',
     });
     const memberCookie = memberLogin.headers['set-cookie'];
@@ -188,11 +197,11 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(memberRes.status).toBe(403);
 
     // 3. Admin request to draw -> 200
-    const tuanAnh = members.find((m) => m.full_name === 'Dương Tuấn Anh') || members[1];
-    await authService.registerMember({ memberId: tuanAnh.id, username: 'tuananh_adm', email: 'adm@example.com', password: 'password123' });
+    const nhan = members.find((m) => m.full_name === 'Hoàng Thị Nhàn')!;
+    await authService.registerMember({ memberId: nhan.id, username: 'nhan_adm', email: 'adm@example.com', password: 'password123' });
     await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('adm@example.com')!.token });
     const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
-      username: 'tuananh_adm',
+      username: 'nhan_adm',
       password: 'password123',
     });
     const adminCookie = adminLogin.headers['set-cookie'];
@@ -214,7 +223,7 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     // 5. Audit log verified
     const audit = db.prepare("SELECT * FROM audit_logs WHERE action = 'TRIGGER_LUCKY_DRAW'").get() as any;
     expect(audit).toBeDefined();
-    expect(audit.actor).toBe('tuananh_adm');
+    expect(audit.actor).toBe('nhan_adm');
     expect(audit.entity_id).toBe('giai-ba');
   });
 

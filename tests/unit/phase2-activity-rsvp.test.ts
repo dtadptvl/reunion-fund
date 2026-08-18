@@ -93,8 +93,7 @@ describe('V2 Phase 2 — Reunion Invitation & Activity RSVP', () => {
   });
 
   it('enforces positive integer for participant count', async () => {
-    const members = memberService.searchMembers('Dương', 10);
-    const duong = members[0];
+    const duong = memberService.searchMembers('Đỗ Thuỳ Dương', 10)[0];
 
     const reg = await authService.registerMember({
       memberId: duong.id,
@@ -124,7 +123,7 @@ describe('V2 Phase 2 — Reunion Invitation & Activity RSVP', () => {
 
   it('HTTP flow: Member RSVP, Admin lock/reopen, and 403 authorization enforcement', async () => {
     const bich = memberService.searchMembers('Nguyễn Thị Bích', 10).find((m) => m.full_name === 'Nguyễn Thị Bích')!;
-    const tuanAnh = memberService.searchMembers('Dương Tuấn Anh', 10).find((m) => m.full_name === 'Dương Tuấn Anh')!;
+    const nhan = memberService.searchMembers('Hoàng Thị Nhàn', 10).find((m) => m.full_name === 'Hoàng Thị Nhàn')!;
 
     // 1. Register Member (Nguyễn Thị Bích)
     await supertest(app.server).post('/api/v1/auth/register').send({
@@ -142,18 +141,18 @@ describe('V2 Phase 2 — Reunion Invitation & Activity RSVP', () => {
     });
     const memberCookie = memberLogin.headers['set-cookie'];
 
-    // 2. Register ADMIN (Dương Tuấn Anh)
+    // 2. Register ADMIN (Hoàng Thị Nhàn)
     await supertest(app.server).post('/api/v1/auth/register').send({
-      memberId: tuanAnh.id,
-      username: 'tuananh_admin',
-      email: 'tuananh_admin@example.com',
+      memberId: nhan.id,
+      username: 'nhan_admin_rsvp',
+      email: 'nhan_admin_rsvp@example.com',
       password: 'adminpassword123',
     });
-    const adminEmail = mockEmailProvider.getLatestEmailFor('tuananh_admin@example.com')!;
+    const adminEmail = mockEmailProvider.getLatestEmailFor('nhan_admin_rsvp@example.com')!;
     await supertest(app.server).post('/api/v1/auth/verify-email').send({ token: adminEmail.token });
 
     const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
-      username: 'tuananh_admin',
+      username: 'nhan_admin_rsvp',
       password: 'adminpassword123',
     });
     const adminCookie = adminLogin.headers['set-cookie'];
@@ -250,11 +249,11 @@ describe('V2 Phase 2 — Reunion Invitation & Activity RSVP', () => {
     expect(rsvpLogs[0].entity_id).toBe(bich.id);
 
     expect(lockLogs).toHaveLength(1);
-    expect(lockLogs[0].actor).toBe('tuananh_admin');
+    expect(lockLogs[0].actor).toBe('nhan_admin_rsvp');
     expect(lockLogs[0].entity_type).toBe('SYSTEM_STATE');
     expect(lockLogs[0].entity_id).toBe('is_rsvp_locked');
 
     expect(unlockLogs).toHaveLength(1);
-    expect(unlockLogs[0].actor).toBe('tuananh_admin');
+    expect(unlockLogs[0].actor).toBe('nhan_admin_rsvp');
   });
 });

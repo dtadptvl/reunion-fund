@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { sortVietnameseMembers } from './member.service.js';
+import { sortVietnameseMembers, extractGivenName } from './member.service.js';
 import { config } from '../config/env.js';
 
 export interface MemberLotteryItem {
@@ -375,7 +375,28 @@ export class LotteryService {
 
     // Filter out previous winners and ensure total_contributed > 0
     const eligibleList = rawMembers.filter((m) => !excludedWinnerIds.has(m.id) && m.total_contributed > 0);
-    const sortedEligible = sortVietnameseMembers(eligibleList);
+
+    // Sort by highest probability / contribution descending, with Vietnamese given name as deterministic secondary sort
+    const sortedEligible = [...eligibleList].sort((a, b) => {
+      const weightA = Math.max(0, Math.floor(a.total_contributed));
+      const weightB = Math.max(0, Math.floor(b.total_contributed));
+      if (weightB !== weightA) {
+        return weightB - weightA;
+      }
+      const givenA = extractGivenName(a.full_name);
+      const givenB = extractGivenName(b.full_name);
+      const comp = givenA.localeCompare(givenB, 'vi', { sensitivity: 'base' });
+      if (comp !== 0) return comp;
+
+      const fullA = a.full_name.replace(/\s*\([^)]*\)/g, '').trim();
+      const fullB = b.full_name.replace(/\s*\([^)]*\)/g, '').trim();
+      const fullComp = fullA.localeCompare(fullB, 'vi', { sensitivity: 'base' });
+      if (fullComp !== 0) return fullComp;
+
+      const disA = a.disambiguator || '';
+      const disB = b.disambiguator || '';
+      return disA.localeCompare(disB, 'vi', { sensitivity: 'base' });
+    });
 
     const totalWeight = sortedEligible.reduce((sum, m) => sum + Math.max(0, Math.floor(m.total_contributed)), 0);
 

@@ -159,8 +159,8 @@ describe('V2 Consolidation Patch — Lucky Wheel, Contribution Identity, Registr
 
   // 5. Canonical Member Display Name Resolution for Admin Accounts
   it('5. Resolves canonical member name as fullName when user account has member_id', async () => {
-    const members = memberService.searchMembers('', 1);
-    const m = members[0];
+    const m = memberService.searchMembers('', 40).find((x) => x.full_name === 'Nguyễn Thị Bích')!;
+    expect(m).toBeDefined();
 
     // Register user for this canonical member
     const regResult = await authService.registerMember({
@@ -177,5 +177,112 @@ describe('V2 Consolidation Patch — Lucky Wheel, Contribution Identity, Registr
     expect(authRes.status).toBe('SUCCESS');
     expect(authRes.session?.memberId).toBe(m.id);
     expect(authRes.session?.fullName).toBe(m.full_name);
+  });
+
+  // 6. Wheel Segments Sorted by Probability Descending & Equal-Weight Vietnamese Name Sort
+  it('6. Sorts wheel segments by probability descending with deterministic Vietnamese name secondary sort', () => {
+    const allMembers = memberService.searchMembers('', 40);
+    const mTop = allMembers.find((m) => m.full_name === 'Nguyễn Vân Anh')!;
+    const mHue1 = allMembers.find((m) => m.full_name === 'Nguyễn Thị Huế' && m.disambiguator === 'Lạc Đạo')!;
+    const mHue2 = allMembers.find((m) => m.full_name === 'Nguyễn Thị Huế' && m.disambiguator === 'Lương Tài')!;
+    const mLa = allMembers.find((m) => m.full_name === 'Lê Hồng La')!;
+    const mBich = allMembers.find((m) => m.full_name === 'Nguyễn Thị Bích')!;
+
+    insertContribution(db, mTop.id, 1000000);   // Top: 1,000,000 (Highest probability)
+    insertContribution(db, mHue1.id, 500000);   // Equal: 500,000 (Huế Lạc Đạo)
+    insertContribution(db, mHue2.id, 500000);   // Equal: 500,000 (Huế Lương Tài)
+    insertContribution(db, mLa.id, 500000);     // Equal: 500,000 (La)
+    insertContribution(db, mBich.id, 200000);   // Lowest: 200,000 (Bích)
+
+    const { segments, totalWeight } = lotteryService.getWheelSegments(new Set());
+    expect(totalWeight).toBe(2700000);
+    expect(segments).toHaveLength(5);
+
+    // Segment 0 must be top contributor (Nguyễn Vân Anh)
+    expect(segments[0].fullName).toBe('Nguyễn Vân Anh');
+    expect(segments[0].weight).toBe(1000000);
+
+    // Segments 1, 2, 3 must be sorted by Vietnamese given name for 500k:
+    // Given names: Huế (H) comes before La (L)
+    expect(segments[1].fullName).toBe('Nguyễn Thị Huế');
+    expect(segments[1].disambiguator).toBe('Lạc Đạo');
+    expect(segments[2].fullName).toBe('Nguyễn Thị Huế');
+    expect(segments[2].disambiguator).toBe('Lương Tài');
+    expect(segments[3].fullName).toBe('Lê Hồng La');
+
+    // Segment 4 must be lowest contributor (Nguyễn Thị Bích)
+    expect(segments[4].fullName).toBe('Nguyễn Thị Bích');
+    expect(segments[4].weight).toBe(200000);
+  });
+
+  // 7. Wheel Segment Visuals: Pure Numbers Only (No Names/Percentages On Canvas)
+  it('7. Verifies wheel canvas renders ONLY upright participant numbers and no names/percentages', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const luckyWheelPagePath = path.resolve(__dirname, '../../client/src/pages/LuckyWheelPage.tsx');
+    const code = fs.readFileSync(luckyWheelPagePath, 'utf-8');
+
+    // Canvas must draw participant number ${i + 1}
+    expect(code.includes('ctx.fillText(`${i + 1}`, 0, 0)')).toBe(true);
+
+    // Canvas must NOT draw full names or percentages inside segment draw loop
+    expect(code.includes('ctx.fillText(nameText')).toBe(false);
+    expect(code.includes('ctx.fillText(seg.probabilityDisplay,')).toBe(false);
+  });
+
+  // 8. Admin Account Identity Repair & Role Invariants
+  it('8. Enforces exactly ONE account for Dương Tuấn Anh, ONE for Hoàng Thị Nhàn as ADMIN, and all others as MEMBER', async () => {
+    const tuanAnh = memberService.searchMembers('Dương Tuấn Anh', 1)[0];
+    const nhan = memberService.searchMembers('Hoàng Thị Nhàn', 1)[0];
+    const bich = memberService.searchMembers('Nguyễn Thị Bích', 1)[0];
+
+    expect(tuanAnh).toBeDefined();
+    expect(nhan).toBeDefined();
+    expect(bich).toBeDefined();
+
+    // 1. Seed initial staff user (admin88)
+    await authService.seedInitialStaff('admin88', undefined, 'Dương Tuấn Anh');
+
+    // 2. Register separate account for Hoàng Thị Nhàn
+    const nhanReg = await authService.registerMember({
+      memberId: nhan.id,
+      username: 'nhan_admin',
+      email: 'nhan@example.com',
+      password: 'password123',
+    });
+    await authService.verifyEmail({ code: nhanReg.verification.code, email: 'nhan@example.com' });
+
+    // 3. Register standard member (Nguyễn Thị Bích)
+    const bichReg = await authService.registerMember({
+      memberId: bich.id,
+      username: 'bich_member',
+      email: 'bich@example.com',
+      password: 'password123',
+    });
+    await authService.verifyEmail({ code: bichReg.verification.code, email: 'bich@example.com' });
+
+    // Trigger admin seeding / invariant enforcement
+    authService.seedDefaultAdmins();
+
+    // Verify Dương Tuấn Anh account
+    const tuanAnhUser = db.prepare('SELECT * FROM users WHERE member_id = ?').get(tuanAnh.id) as any;
+    expect(tuanAnhUser).toBeDefined();
+    expect(tuanAnhUser.role).toBe('ADMIN');
+    expect(tuanAnhUser.full_name).toBe('Dương Tuấn Anh');
+
+    // Verify Hoàng Thị Nhàn account
+    const nhanUser = db.prepare('SELECT * FROM users WHERE member_id = ?').get(nhan.id) as any;
+    expect(nhanUser).toBeDefined();
+    expect(nhanUser.role).toBe('ADMIN');
+    expect(nhanUser.full_name).toBe('Hoàng Thị Nhàn');
+
+    // Verify Nguyễn Thị Bích account (MUST be MEMBER)
+    const bichUser = db.prepare('SELECT * FROM users WHERE member_id = ?').get(bich.id) as any;
+    expect(bichUser).toBeDefined();
+    expect(bichUser.role).toBe('MEMBER');
+
+    // Verify total ADMIN count in users table is exactly 2 (Dương Tuấn Anh & Hoàng Thị Nhàn)
+    const adminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'ADMIN'").get() as { count: number };
+    expect(adminCount.count).toBe(2);
   });
 });
