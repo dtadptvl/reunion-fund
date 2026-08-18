@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { formatVND, formatDateVN, getCategoryLabelVN } from '../utils/format.js';
+import { FundGoalProgress } from '../components/FundGoalProgress.js';
 
 interface HomePageProps {
   onGoToContribute: () => void;
@@ -65,6 +66,13 @@ export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute, onGoToActi
             <div className="stat-value">{overview.contributorCount} thành viên</div>
           </div>
         </div>
+
+        {/* Fund Goal Progress Section */}
+        <FundGoalProgress
+          totalIncome={overview.totalIncome}
+          suggestedAmount={overview.suggestedAmount}
+          targetAmount={overview.fundGoal?.targetAmount}
+        />
       </section>
 
       {/* Grid: Recent Contributions & Recent Expenses */}

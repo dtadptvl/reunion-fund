@@ -112,6 +112,9 @@ export async function publicRoutes(
 
     const totalIncome = incomeRow.total;
     const totalExpense = expenseRow.total;
+    const rawSuggested = isNaN(suggestedAmount) || suggestedAmount <= 0 ? 500000 : suggestedAmount;
+    const targetAmount = rawSuggested * 18;
+    const progressPercent = targetAmount > 0 ? (totalIncome / targetAmount) * 100 : 0;
 
     return {
       eventTitle: config.REUNION_EVENT_TITLE,
@@ -120,7 +123,16 @@ export async function publicRoutes(
       balance: totalIncome - totalExpense,
       contributorCount: countRow.count,
       isSettled: settledRow?.value === 'true',
-      suggestedAmount: isNaN(suggestedAmount) ? 500000 : suggestedAmount,
+      suggestedAmount: rawSuggested,
+      fundGoal: {
+        suggestedAmount: rawSuggested,
+        targetAmount,
+        targetMultiplier: 18,
+        totalIncome,
+        progressPercent: Math.round(progressPercent * 10) / 10,
+        isGoalReached: totalIncome >= targetAmount,
+        overGoalPercent: totalIncome > targetAmount ? Math.round((progressPercent - 100) * 10) / 10 : 0,
+      },
       recentContributions,
       recentExpenses,
     };
@@ -132,10 +144,14 @@ export async function publicRoutes(
       .prepare("SELECT value FROM system_state WHERE key = 'suggested_contribution_amount'")
       .get() as { value: string } | undefined;
     const suggestedAmount = suggestedRow ? parseInt(suggestedRow.value, 10) : 500000;
+    const rawSuggested = isNaN(suggestedAmount) || suggestedAmount <= 0 ? 500000 : suggestedAmount;
+    const targetAmount = rawSuggested * 18;
 
     return {
       eventTitle: config.REUNION_EVENT_TITLE,
-      suggestedAmount: isNaN(suggestedAmount) ? 500000 : suggestedAmount,
+      suggestedAmount: rawSuggested,
+      targetAmount,
+      targetMultiplier: 18,
     };
   });
 

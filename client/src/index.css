@@ -460,5 +460,281 @@ button, input, select, textarea {
   }
 }
 
+/* ========================================================================= */
+/* FUND GOAL PROGRESS & FIRE OVERGOAL TIERS                                  */
+/* ========================================================================= */
 
+.fund-goal-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin: 16px 0 24px 0;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+  width: 100%;
+}
 
+.fund-goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.fund-goal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fund-goal-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.fund-goal-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-main);
+  font-family: var(--font-display);
+}
+
+.fund-goal-amounts {
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fund-goal-current {
+  color: var(--primary);
+}
+
+.fund-goal-divider {
+  color: var(--text-light);
+  font-weight: 400;
+}
+
+.fund-goal-target {
+  color: var(--text-muted);
+}
+
+.fund-goal-track {
+  width: 100%;
+  height: 14px;
+  background-color: var(--bg-card-subtle);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border-color);
+}
+
+.fund-goal-bar {
+  height: 100%;
+  border-radius: var(--radius-full);
+  position: relative;
+  transition: width 0.8s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+.fund-goal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fund-goal-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.fund-goal-badge {
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: var(--bg-card-subtle);
+  color: var(--text-main);
+}
+
+/* Tier: Normal (<100%) */
+.fund-goal-container.tier-normal .fund-goal-bar {
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.fund-goal-container.tier-normal .fund-goal-badge {
+  background: hsl(155, 60%, 94%);
+  color: hsl(155, 80%, 25%);
+}
+
+/* Tier: Goal Reached (100%) */
+.fund-goal-container.tier-reached {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.5) 0%, var(--bg-card) 100%);
+}
+
+.fund-goal-container.tier-reached .fund-goal-title {
+  color: #b45309;
+}
+
+.fund-goal-container.tier-reached .fund-goal-bar {
+  background: linear-gradient(90deg, #f59e0b 0%, #10b981 100%);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+.fund-goal-container.tier-reached .fund-goal-badge {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+/* Tier: Fire 1 (100 - 110% Subtle) */
+.fund-goal-container.tier-fire-1 {
+  border-color: rgba(249, 115, 22, 0.4);
+  background: linear-gradient(135deg, rgba(255, 237, 213, 0.45) 0%, var(--bg-card) 100%);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
+}
+
+.fund-goal-container.tier-fire-1 .fund-goal-title {
+  color: #c2410c;
+}
+
+.fund-goal-container.tier-fire-1 .fund-goal-current {
+  color: #ea580c;
+}
+
+.fund-goal-container.tier-fire-1 .fund-goal-bar {
+  background: linear-gradient(90deg, #f59e0b 0%, #f97316 60%, #ef4444 100%);
+  box-shadow: 0 0 14px rgba(249, 115, 22, 0.5);
+}
+
+.fund-goal-container.tier-fire-1 .fund-goal-badge {
+  background: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+}
+
+/* Tier: Fire 2 (>110 - 130% Moderate) */
+.fund-goal-container.tier-fire-2 {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.55) 0%, var(--bg-card) 100%);
+  box-shadow: 0 3px 12px rgba(239, 68, 68, 0.2);
+}
+
+.fund-goal-container.tier-fire-2 .fund-goal-title {
+  color: #b91c1c;
+}
+
+.fund-goal-container.tier-fire-2 .fund-goal-current {
+  color: #dc2626;
+}
+
+.fund-goal-container.tier-fire-2 .fund-goal-bar {
+  background: linear-gradient(90deg, #fb923c 0%, #f97316 40%, #ef4444 80%, #dc2626 100%);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.6);
+}
+
+.fund-goal-container.tier-fire-2 .fund-goal-badge {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* Tier: Fire 3 (>130 - 160% Strong) */
+.fund-goal-container.tier-fire-3 {
+  border-color: rgba(220, 38, 38, 0.6);
+  background: linear-gradient(135deg, rgba(254, 202, 202, 0.55) 0%, rgba(255, 237, 213, 0.4) 100%);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.25);
+}
+
+.fund-goal-container.tier-fire-3 .fund-goal-title {
+  color: #991b1b;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+.fund-goal-container.tier-fire-3 .fund-goal-current {
+  color: #b91c1c;
+}
+
+.fund-goal-container.tier-fire-3 .fund-goal-bar {
+  background: linear-gradient(90deg, #facc15 0%, #f97316 35%, #ef4444 70%, #b91c1c 100%);
+  box-shadow: 0 0 22px rgba(239, 68, 68, 0.7);
+}
+
+.fund-goal-container.tier-fire-3 .fund-goal-badge {
+  background: linear-gradient(135deg, #fef08a 0%, #fed7aa 100%);
+  color: #7f1d1d;
+  border: 1px solid #f87171;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+/* Tier: Fire 4 (>160% Supercharged) */
+.fund-goal-container.tier-fire-4 {
+  border-color: rgba(185, 28, 28, 0.75);
+  background: linear-gradient(135deg, rgba(254, 202, 202, 0.7) 0%, rgba(254, 240, 138, 0.4) 100%);
+  box-shadow: 0 6px 22px rgba(220, 38, 38, 0.35);
+}
+
+.fund-goal-container.tier-fire-4 .fund-goal-title {
+  color: #7f1d1d;
+  font-weight: 800;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.fund-goal-container.tier-fire-4 .fund-goal-current {
+  color: #991b1b;
+}
+
+.fund-goal-container.tier-fire-4 .fund-goal-bar {
+  background: linear-gradient(90deg, #fef08a 0%, #fb923c 25%, #ef4444 55%, #9333ea 100%);
+  box-shadow: 0 0 25px rgba(220, 38, 38, 0.85);
+}
+
+.fund-goal-container.tier-fire-4 .fund-goal-badge {
+  background: linear-gradient(135deg, #fef08a 0%, #fca5a5 100%);
+  color: #450a0a;
+  border: 1px solid #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+/* Animated flame shimmer across the overgoal bar */
+.fund-goal-fire-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: flameShimmer 2s infinite linear;
+}
+
+@keyframes flameShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .fund-goal-bar {
+    transition: none !important;
+  }
+  .fund-goal-fire-shimmer {
+    animation: none !important;
+    display: none !important;
+  }
+}
