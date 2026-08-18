@@ -134,9 +134,31 @@ export const Navbar: React.FC<NavbarProps> = ({
           aria-label={mobileMenuOpen ? 'Đóng menu' : 'Mở menu điều hướng'}
           aria-expanded={mobileMenuOpen}
         >
-          <span className="hamburger-box">
-            <span className="hamburger-inner" />
-          </span>
+          <svg
+            className="navbar-toggle-icon"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {mobileMenuOpen ? (
+              <>
+                <line x1="5" y1="5" x2="19" y2="19" />
+                <line x1="19" y1="5" x2="5" y2="19" />
+              </>
+            ) : (
+              <>
+                <line x1="3" y1="5" x2="21" y2="5" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="19" x2="21" y2="19" />
+              </>
+            )}
+          </svg>
         </button>
       </div>
 

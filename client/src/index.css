@@ -253,7 +253,10 @@ button, input, select, textarea {
 
 /* Hamburger Toggle Button for Mobile */
 .navbar-toggle {
-  display: flex;
+  display: grid;
+  place-items: center;
+  justify-content: center;
+  align-items: center;
   background: none;
   border: none;
   cursor: pointer;
@@ -265,14 +268,30 @@ button, input, select, textarea {
   width: 44px;
   height: 44px;
   flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
   border-radius: var(--radius-md);
   color: var(--text-main);
   touch-action: manipulation;
   box-sizing: border-box;
   margin: 0;
   position: relative;
+  transition: background-color 0.15s ease;
+}
+
+.navbar-toggle:hover, .navbar-toggle:active {
+  background-color: var(--bg-card-subtle);
+}
+
+.navbar-toggle-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  flex-shrink: 0;
+  pointer-events: none;
+  margin: auto;
 }
 
 @media (min-width: 1151px) {
@@ -283,50 +302,6 @@ button, input, select, textarea {
 
 .navbar-toggle:focus-visible {
   outline: 2px solid var(--primary);
-}
-
-.hamburger-box {
-  width: 24px;
-  height: 18px;
-  display: inline-block;
-  position: relative;
-  margin: 0 auto;
-}
-
-.hamburger-inner, .hamburger-inner::before, .hamburger-inner::after {
-  width: 24px;
-  height: 2.5px;
-  background-color: var(--text-main);
-  border-radius: 4px;
-  position: absolute;
-  transition: transform 0.2s ease, background-color 0.2s ease;
-}
-
-.hamburger-inner {
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.hamburger-inner::before {
-  content: '';
-  top: -7px;
-}
-
-.hamburger-inner::after {
-  content: '';
-  bottom: -7px;
-}
-
-.navbar-toggle.open .hamburger-inner {
-  background-color: transparent;
-}
-
-.navbar-toggle.open .hamburger-inner::before {
-  transform: translateY(7px) rotate(45deg);
-}
-
-.navbar-toggle.open .hamburger-inner::after {
-  transform: translateY(-7px) rotate(-45deg);
 }
 
 /* Mobile Nav Drawer */
