@@ -394,7 +394,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
             <input
               type="number"
               min="1000"
-              step="10000"
+              step="1000"
               value={suggestedAmountInput}
               onChange={(e) => setSuggestedAmountInput(Number(e.target.value))}
               style={{

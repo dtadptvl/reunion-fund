@@ -111,8 +111,8 @@ export const FundGoalProgress: React.FC<FundGoalProgressProps> = ({
       <div className="fund-goal-footer">
         <span className="fund-goal-subtitle">
           {isGoalReached
-            ? `Tuyệt vời! Quỹ đã đạt ${roundedPercent}% kế hoạch (18 thành viên × ${formatVND(baseSuggested)})`
-            : `Kế hoạch: 18 thành viên × ${formatVND(baseSuggested)}`}
+            ? `Tuyệt vời! Quỹ đã hoàn thành ${roundedPercent}% kế hoạch`
+            : `Đã hoàn thành ${roundedPercent}% tiến độ`}
         </span>
         <span className="fund-goal-badge">{badgeText}</span>
       </div>
