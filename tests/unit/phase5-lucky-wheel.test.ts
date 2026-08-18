@@ -307,8 +307,8 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     lotteryService.triggerDraw('giai-nhi', 'admin');
     lotteryService.triggerDraw('giai-nhat', 'admin');
 
-    // Simulate elapsed spin duration for Giải Nhất
-    db.prepare("UPDATE lucky_wheel_draws SET started_at = datetime('now', '-40 seconds') WHERE prize_id = 'giai-nhat'").run();
+    // Simulate elapsed spin duration for all draws
+    db.prepare("UPDATE lucky_wheel_draws SET started_at = datetime('now', '-100 seconds')").run();
 
     const finishedState = lotteryService.getPublicWheelState();
     expect(finishedState.status).toBe('FINISHED');
@@ -330,6 +330,77 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     try {
       fs.unlinkSync(path.join(audioDir, 'lottery_bgm.mp3'));
     } catch { /* ignore */ }
+  });
+
+  it('9. Sanitizes public presentation state during spin (winner === null) and reveals only after duration completes', async () => {
+    const members = memberService.searchMembers('', 5);
+    members.slice(0, 4).forEach((m) => {
+      insertContribution(db, m.id, 500000);
+    });
+
+    // 1. Trigger Giải Ba draw
+    const drawBa = lotteryService.triggerDraw('giai-ba', 'admin');
+    expect(drawBa.winner_member_id).toBeDefined();
+
+    // 2. Immediately inspect public wheel state (while spinning)
+    const spinningState = lotteryService.getPublicWheelState();
+    expect(spinningState.status).toBe('SPINNING');
+    expect(spinningState.activeDraw).toBeDefined();
+    expect(spinningState.activeDraw?.isSpinning).toBe(true);
+    expect(spinningState.activeDraw?.isRevealed).toBe(false);
+    expect(spinningState.activeDraw?.winner).toBeNull(); // SANITIZED!
+    expect(spinningState.completedPrizes).toHaveLength(0); // Hidden from results!
+
+    // 3. Simulate elapsed duration (15s passed)
+    db.prepare("UPDATE lucky_wheel_draws SET started_at = datetime('now', '-16 seconds') WHERE prize_id = 'giai-ba'").run();
+
+    // 4. Re-fetch public state after reveal time
+    const revealedState = lotteryService.getPublicWheelState();
+    expect(revealedState.status).toBe('IDLE');
+    expect(revealedState.activeDraw).toBeDefined();
+    expect(revealedState.activeDraw?.isSpinning).toBe(false);
+    expect(revealedState.activeDraw?.isRevealed).toBe(true);
+    expect(revealedState.activeDraw?.winner).toBeDefined();
+    expect(revealedState.activeDraw?.winner?.fullName).toBe(drawBa.winner_name);
+    expect(revealedState.completedPrizes).toHaveLength(1);
+    expect(revealedState.completedPrizes[0].prizeId).toBe('giai-ba');
+    expect(revealedState.completedPrizes[0].winnerName).toBe(drawBa.winner_name);
+  });
+
+  it('10. Results timing: Previous prize results remain visible while current prize is spinning and hidden', async () => {
+    const members = memberService.searchMembers('', 5);
+    members.slice(0, 4).forEach((m) => {
+      insertContribution(db, m.id, 500000);
+    });
+
+    // 1. Draw Giải Ba and advance past reveal
+    const drawBa = lotteryService.triggerDraw('giai-ba', 'admin');
+    db.prepare("UPDATE lucky_wheel_draws SET started_at = datetime('now', '-20 seconds') WHERE prize_id = 'giai-ba'").run();
+
+    // 2. Trigger Giải Nhì (currently spinning)
+    const drawNhi = lotteryService.triggerDraw('giai-nhi', 'admin');
+    expect(drawNhi.prize_id).toBe('giai-nhi');
+
+    // 3. Inspect public state: Giải Ba is visible, Giải Nhì is spinning and sanitized
+    const stateDuringNhi = lotteryService.getPublicWheelState();
+    expect(stateDuringNhi.status).toBe('SPINNING');
+    expect(stateDuringNhi.activeDraw?.prizeId).toBe('giai-nhi');
+    expect(stateDuringNhi.activeDraw?.isSpinning).toBe(true);
+    expect(stateDuringNhi.activeDraw?.winner).toBeNull(); // Giải Nhì winner hidden!
+    expect(stateDuringNhi.completedPrizes).toHaveLength(1); // Only Giải Ba in results!
+    expect(stateDuringNhi.completedPrizes[0].prizeId).toBe('giai-ba');
+    expect(stateDuringNhi.completedPrizes[0].winnerName).toBe(drawBa.winner_name);
+
+    // 4. Advance past Giải Nhì duration (25s)
+    db.prepare("UPDATE lucky_wheel_draws SET started_at = datetime('now', '-30 seconds') WHERE prize_id = 'giai-nhi'").run();
+
+    // 5. Inspect public state: Both Giải Ba and Giải Nhì are now in results
+    const stateAfterNhi = lotteryService.getPublicWheelState();
+    expect(stateAfterNhi.status).toBe('IDLE');
+    expect(stateAfterNhi.activeDraw?.isSpinning).toBe(false);
+    expect(stateAfterNhi.activeDraw?.winner?.fullName).toBe(drawNhi.winner_name);
+    expect(stateAfterNhi.completedPrizes).toHaveLength(2);
+    expect(stateAfterNhi.completedPrizes.map((p) => p.prizeId)).toEqual(['giai-ba', 'giai-nhi']);
   });
 });
 

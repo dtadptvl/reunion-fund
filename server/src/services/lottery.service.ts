@@ -774,36 +774,44 @@ export class LotteryService {
 
   /**
    * Retrieves the current real-time synchronized state of the Lucky Wheel.
+   * Ensures winner remains completely hidden & sanitized while spinning,
+   * and completed prize cards only update after full animation duration completes.
    */
   getPublicWheelState(): LuckyWheelState {
-    const completedDraws = this.getCompletedDraws();
-    const completedPrizeIds = new Set(completedDraws.map((d) => d.prize_id));
-    const previousWinnerIds = new Set(completedDraws.map((d) => d.winner_member_id));
-
-    // Find next pending prize
-    const nextPrize = LUCKY_WHEEL_PRIZES.find((p) => !completedPrizeIds.has(p.prizeId)) || null;
-
-    // Check if there is an active spinning draw or most recent draw
+    const allDraws = this.getCompletedDraws();
     const now = new Date();
     const nowMs = now.getTime();
 
-    // Find active draw: either currently spinning or the most recent completed draw
-    const latestDraw = completedDraws.length > 0 ? completedDraws[completedDraws.length - 1] : null;
+    // Authoritative check for draws whose full animation duration has elapsed
+    const actuallyCompletedDraws = allDraws.filter((d) => {
+      const startedMs = new Date(d.started_at).getTime();
+      const durationMs = d.duration_seconds * 1000;
+      return nowMs >= startedMs + durationMs;
+    });
+
+    const actuallyCompletedPrizeIds = new Set(actuallyCompletedDraws.map((d) => d.prize_id));
+    const revealedWinnerIds = new Set(actuallyCompletedDraws.map((d) => d.winner_member_id));
+
+    // Find next pending prize (not yet in actually completed draws)
+    const nextPrize = LUCKY_WHEEL_PRIZES.find((p) => !actuallyCompletedPrizeIds.has(p.prizeId)) || null;
+
+    const latestDraw = allDraws.length > 0 ? allDraws[allDraws.length - 1] : null;
 
     let activeDrawInfo: LuckyWheelState['activeDraw'] = null;
     let currentPrize: LuckyWheelPrizeDef | null = nextPrize;
     let status: LuckyWheelState['status'] = 'IDLE';
 
-    let { segments, totalWeight } = this.getWheelSegments(previousWinnerIds);
+    let { segments, totalWeight } = this.getWheelSegments(revealedWinnerIds);
 
     if (latestDraw) {
       const startedMs = new Date(latestDraw.started_at).getTime();
       const durationMs = latestDraw.duration_seconds * 1000;
       const completedMs = startedMs + durationMs;
       const isSpinning = nowMs < completedMs;
+      const isRevealed = nowMs >= completedMs;
 
       // When the latest draw is spinning or is the active target, reconstruct its wheel segments
-      if (isSpinning || (!nextPrize && completedDraws.length === LUCKY_WHEEL_PRIZES.length)) {
+      if (isSpinning || (!nextPrize && allDraws.length === LUCKY_WHEEL_PRIZES.length)) {
         try {
           const snapshot = JSON.parse(latestDraw.eligible_snapshot_json) as LuckyWheelSegment[];
           if (Array.isArray(snapshot) && snapshot.length > 0) {
@@ -815,7 +823,7 @@ export class LotteryService {
         }
       }
 
-      // Find target segment index
+      // Find target segment index and angle
       const targetIndex = segments.findIndex((s) => s.memberId === latestDraw.winner_member_id);
       const targetSeg = targetIndex >= 0 ? segments[targetIndex] : null;
       const targetAngle = targetSeg ? (targetSeg.startAngle + targetSeg.endAngle) / 2 : 0;
@@ -827,15 +835,18 @@ export class LotteryService {
         startedAt: latestDraw.started_at,
         completedAt: latestDraw.completed_at,
         isSpinning,
-        isRevealed: nowMs >= completedMs,
+        isRevealed,
         targetSegmentIndex: targetIndex,
         targetAngle,
-        winner: {
-          memberId: latestDraw.winner_member_id,
-          fullName: latestDraw.winner_name,
-          disambiguator: latestDraw.winner_disambiguator,
-          weight: latestDraw.winner_weight,
-        },
+        // SANITIZE: Hide winner completely from public payload during spin
+        winner: isRevealed
+          ? {
+              memberId: latestDraw.winner_member_id,
+              fullName: latestDraw.winner_name,
+              disambiguator: latestDraw.winner_disambiguator,
+              weight: latestDraw.winner_weight,
+            }
+          : null,
       };
 
       if (isSpinning) {
@@ -860,7 +871,8 @@ export class LotteryService {
       activeDraw: activeDrawInfo,
       wheelSegments: segments,
       totalEligibleWeight: totalWeight,
-      completedPrizes: completedDraws.map((d) => ({
+      // SANITIZE: Only expose actually completed draws in results history
+      completedPrizes: actuallyCompletedDraws.map((d) => ({
         prizeId: d.prize_id,
         prizeTitle: d.prize_title,
         prizeOrder: d.prize_order,

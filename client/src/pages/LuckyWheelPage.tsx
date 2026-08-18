@@ -126,7 +126,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         setWheelState(data);
         setMusicAvailable(Boolean(data.hasBackgroundMusic));
 
-        // Handle Active Draw Animation
+        // Handle Active Draw Animation & Reveal Synchronization
         if (data.activeDraw) {
           const startedAt = data.activeDraw.startedAt;
           const serverNowMs = new Date(data.serverTime).getTime();
@@ -135,14 +135,17 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           const elapsedMs = serverNowMs - startedMs;
 
           if (elapsedMs < durationMs && elapsedMs >= 0) {
-            // Ongoing spin
+            // Ongoing spin: Winner MUST remain strictly hidden
+            setIsSpinningLocal(true);
+            setRevealedWinner(null);
             if (lastActiveDrawStartedAt.current !== startedAt) {
               lastActiveDrawStartedAt.current = startedAt;
               startSpinAnimation(data.activeDraw.targetAngle, data.activeDraw.durationSeconds, elapsedMs, data.activeDraw);
             }
           } else if (elapsedMs >= durationMs) {
-            // Already completed spin
-            if (!isSpinningLocal && data.activeDraw.winner) {
+            // Completed duration: Authoritatively reveal winner if returned by server
+            setIsSpinningLocal(false);
+            if (data.activeDraw.winner) {
               setRevealedWinner({
                 prizeTitle: data.activeDraw.prizeTitle,
                 name: data.activeDraw.winner.fullName,
@@ -151,6 +154,9 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               });
             }
           }
+        } else if (data.status === 'IDLE') {
+          setIsSpinningLocal(false);
+          setRevealedWinner(null);
         }
       }
     } catch (err) {
@@ -169,7 +175,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
     targetAngleDeg: number,
     totalDurationSec: number,
     elapsedMs: number,
-    activeDrawData: any
+    _activeDrawData: any
   ) => {
     setIsSpinningLocal(true);
     setRevealedWinner(null);
@@ -190,16 +196,9 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(animate);
       } else {
-        // Animation finished: reveal winner
+        // Animation finished: authoritatively request revealed state from server
         setIsSpinningLocal(false);
-        if (activeDrawData?.winner) {
-          setRevealedWinner({
-            prizeTitle: activeDrawData.prizeTitle,
-            name: activeDrawData.winner.fullName,
-            disambiguator: activeDrawData.winner.disambiguator,
-            weight: activeDrawData.winner.weight,
-          });
-        }
+        fetchWheelState();
       }
     };
 
@@ -822,27 +821,31 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             maxHeight: 'calc(100vh - 80px)',
             justifyContent: 'space-between',
             overflowY: 'auto',
-            padding: '2px 4px 2px 2px',
+            overflowX: 'hidden',
+            padding: '4px 8px 4px 4px',
             boxSizing: 'border-box',
             width: '100%',
+            maxWidth: '100%',
           }}
         >
           {/* 1. Winner Reveal Celebration Banner (Box-Sizing Safe, Full Visible Borders on All 4 Sides) */}
           {revealedWinner && (
             <div
               style={{
-                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(202, 138, 4, 0.35) 100%)',
+                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(202, 138, 4, 0.3) 100%)',
                 border: '2px solid #facc15',
                 borderRadius: '12px',
                 padding: '12px 16px',
                 textAlign: 'center',
-                boxShadow: '0 0 25px rgba(234, 179, 8, 0.5)',
-                animation: 'winnerPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                boxShadow: 'inset 0 0 20px rgba(234, 179, 8, 0.25), 0 2px 10px rgba(0, 0, 0, 0.5)',
+                animation: 'fadeInDown 0.4s ease-out',
                 boxSizing: 'border-box',
                 width: '100%',
-                margin: '0',
+                maxWidth: '100%',
+                margin: '0 0 6px 0',
                 overflow: 'hidden',
                 wordBreak: 'break-word',
+                overflowWrap: 'break-word',
               }}
             >
               <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fef08a', textTransform: 'uppercase', letterSpacing: '1px' }}>
