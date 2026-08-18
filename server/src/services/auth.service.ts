@@ -117,8 +117,8 @@ export class AuthService {
     if (!this.db.open) return;
 
     // Clean up any legacy Treasurer display names in staff_users and users
-    this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%' OR username IN ('admin', 'thuquy')").run();
-    this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%' OR username IN ('admin', 'thuquy')").run();
+    this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%'").run();
+    this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh' WHERE full_name LIKE '%Thủ Quỹ%'").run();
 
     const adminMemberIds: string[] = [];
 
@@ -137,11 +137,11 @@ export class AuthService {
       }
     }
 
-    // Downgrade any non-default-admin member accounts to MEMBER role
+    // Downgrade any non-default-admin or unlinked user accounts to MEMBER role
     if (adminMemberIds.length > 0) {
       const placeholders = adminMemberIds.map(() => '?').join(',');
       this.db
-        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE member_id IS NOT NULL AND member_id NOT IN (${placeholders}) AND role = 'ADMIN'`)
+        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE member_id IS NULL OR member_id NOT IN (${placeholders})`)
         .run(...adminMemberIds);
     }
   }
