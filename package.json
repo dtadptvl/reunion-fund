@@ -11,7 +11,8 @@
     "build:client": "vite build --config client/vite.config.ts",
     "build:server": "tsc -p server/tsconfig.json",
     "build": "npm run build:client && npm run build:server",
-    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit",
+    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit && tsc -p edge/tsconfig.json --noEmit",
+    "deploy:edge:stage": "wrangler deploy --config edge/wrangler.toml",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -41,6 +42,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260818.1",
     "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.17.10",

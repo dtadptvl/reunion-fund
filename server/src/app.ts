@@ -116,6 +116,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.register(rateLimit, {
     max: 120,
     timeWindow: '1 minute',
+    allowList: (req: any) => {
+      const rawUrl = req.raw?.url || req.url || '';
+      return rawUrl.startsWith('/assets/') || rawUrl === '/vite.svg' || rawUrl === '/favicon.ico' || (!rawUrl.startsWith('/api') && !rawUrl.startsWith('/health'));
+    },
   });
 
   app.register(multipart, {
