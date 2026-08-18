@@ -76,7 +76,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute, onGoToActi
       </section>
 
       {/* Grid: Recent Contributions & Recent Expenses */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '20px' }}>
         {/* Recent Contributions */}
         <div className="card">
           <div className="card-header">

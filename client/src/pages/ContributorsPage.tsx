@@ -52,7 +52,7 @@ export const ContributorsPage: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-          <span style={{ fontSize: '1.5rem' }}>🎁</span>
+          <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🎁</span>
           <div>
             <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#166534', fontWeight: 700 }}>
               Công Thức Tính Tỷ Lệ Quay Thưởng
@@ -68,7 +68,7 @@ export const ContributorsPage: React.FC = () => {
       </div>
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 className="card-title">Danh Sách Đóng Góp Quỹ & Tỷ Lệ Quay Thưởng</h1>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
@@ -76,71 +76,120 @@ export const ContributorsPage: React.FC = () => {
             </div>
           </div>
           <div>
-            <a href="/api/v1/public/export/xlsx" className="btn btn-outline" download>
+            <a href="/api/v1/public/export/xlsx" className="btn btn-outline btn-sm" download>
               📥 Xuất Excel (XLSX)
             </a>
           </div>
         </div>
 
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Họ và tên</th>
-              <th>Phân loại</th>
-              <th style={{ textAlign: 'center' }}>Số lần đóng</th>
-              <th style={{ textAlign: 'right' }}>Tổng đã đóng</th>
-              <th style={{ textAlign: 'right' }}>Tỷ lệ quay thưởng</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allContributors.map((person) => (
-              <tr
-                key={person.id}
-                onClick={() => person.contribution_count > 0 && openHistory(person.id, person.displayName)}
-                style={{ cursor: person.contribution_count > 0 ? 'pointer' : 'default' }}
-              >
-                <td>
-                  <strong style={{ color: 'var(--text-main)' }}>{person.displayName}</strong>
-                </td>
-                <td>
-                  <span className={`badge ${person.type === 'Thành viên lớp' ? 'badge-neutral' : 'badge-warning'}`}>
-                    {person.type}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  {person.contribution_count > 0 ? (
-                    <span className="badge badge-success">{person.contribution_count} lần</span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>Chưa đóng</span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: person.total_contributed > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>
-                  {person.total_contributed > 0 ? formatVND(person.total_contributed) : '0 ₫'}
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: person.lottery_probability > 0 ? '#16a34a' : 'var(--text-muted)' }}>
-                  {person.type === 'Thành viên lớp' ? (person.lottery_probability_display || '0%') : '—'}
-                </td>
+        {/* DESKTOP TABLE VIEW (>= 768px) */}
+        <div className="responsive-table-desktop">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Họ và tên</th>
+                <th>Phân loại</th>
+                <th style={{ textAlign: 'center' }}>Số lần đóng</th>
+                <th style={{ textAlign: 'right' }}>Tổng đã đóng</th>
+                <th style={{ textAlign: 'right' }}>Tỷ lệ quay thưởng</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {allContributors.map((person) => (
+                <tr
+                  key={person.id}
+                  onClick={() => person.contribution_count > 0 && openHistory(person.id, person.displayName)}
+                  style={{ cursor: person.contribution_count > 0 ? 'pointer' : 'default' }}
+                >
+                  <td>
+                    <strong style={{ color: 'var(--text-main)' }}>{person.displayName}</strong>
+                  </td>
+                  <td>
+                    <span className={`badge ${person.type === 'Thành viên lớp' ? 'badge-neutral' : 'badge-warning'}`}>
+                      {person.type}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {person.contribution_count > 0 ? (
+                      <span className="badge badge-success">{person.contribution_count} lần</span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>Chưa đóng</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: person.total_contributed > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>
+                    {person.total_contributed > 0 ? formatVND(person.total_contributed) : '0 ₫'}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: person.lottery_probability > 0 ? '#16a34a' : 'var(--text-muted)' }}>
+                    {person.type === 'Thành viên lớp' ? (person.lottery_probability_display || '0%') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* MOBILE STACKED CARDS VIEW (< 768px) */}
+        <div className="responsive-cards-mobile">
+          {allContributors.map((person) => (
+            <div
+              key={person.id}
+              className="contributor-mobile-card"
+              onClick={() => person.contribution_count > 0 && openHistory(person.id, person.displayName)}
+              style={{ cursor: person.contribution_count > 0 ? 'pointer' : 'default' }}
+            >
+              <div className="contributor-card-header">
+                <div className="contributor-card-name">{person.displayName}</div>
+                <span className={`badge badge-sm ${person.type === 'Thành viên lớp' ? 'badge-neutral' : 'badge-warning'}`}>
+                  {person.type}
+                </span>
+              </div>
+
+              <div className="contributor-card-metrics">
+                <div className="card-metric-col">
+                  <div className="metric-sublabel">Đã đóng</div>
+                  <div className="metric-main-val text-primary">
+                    {person.total_contributed > 0 ? formatVND(person.total_contributed) : '0 ₫'}
+                  </div>
+                </div>
+
+                <div className="card-metric-col" style={{ textAlign: 'right' }}>
+                  <div className="metric-sublabel">Tỷ lệ quay thưởng</div>
+                  <div className="metric-main-val text-success">
+                    {person.type === 'Thành viên lớp' ? (person.lottery_probability_display || '0%') : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="contributor-card-footer">
+                {person.contribution_count > 0 ? (
+                  <span className="badge badge-success badge-sm">
+                    ✓ {person.contribution_count} lần đóng (chạm xem chi tiết)
+                  </span>
+                ) : (
+                  <span className="badge badge-neutral badge-sm">Chưa đóng</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Modal for Multiple Contributions History */}
       {selectedPerson && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
-          <div className="card" style={{ maxWidth: '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto' }}>
+        <div className="modal-backdrop" onClick={() => setSelectedPerson(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="card-header">
-              <h2 className="card-title">Lịch sử đóng góp: {selectedPerson.name}</h2>
+              <h2 className="card-title" style={{ fontSize: '1.15rem' }}>Lịch sử đóng góp: {selectedPerson.name}</h2>
               <button
                 onClick={() => setSelectedPerson(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}
+                className="btn-icon"
+                aria-label="Đóng"
               >
                 ✕
               </button>
             </div>
             {personHistory.length === 0 ? (
-              <p>Đang tải chi tiết...</p>
+              <p style={{ padding: '16px 0', color: 'var(--text-muted)' }}>Đang tải chi tiết...</p>
             ) : (
               <table className="data-table">
                 <thead>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { AuthShell } from '../components/AuthShell.js';
 
 interface RegisterPageProps {
   onRegisterSuccess: (email: string) => void;
@@ -163,335 +164,201 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
     }
   };
 
+  const footerContent = (
+    <div className="auth-footer-text">
+      Đã có tài khoản thành viên?{' '}
+      <button type="button" onClick={onGoToLogin} className="btn-link-inline">
+        Đăng nhập ngay
+      </button>
+    </div>
+  );
+
   return (
-    <div style={{ maxWidth: '520px', margin: '40px auto' }}>
-      <div className="card">
-        <div className="card-header" style={{ textAlign: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '1px' }}>
-            KỶ NIỆM 10 NĂM RA TRƯỜNG
-          </div>
-          <h1 className="card-title" style={{ fontSize: '1.4rem', margin: '6px 0 2px 0' }}>
-            {isGuestMode ? 'Đóng Quỹ Với Tư Cách Khách' : 'Đăng Ký Tài Khoản Thành Viên'}
-          </h1>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Lớp A1 — Khóa 48 (2013–2016) — Trường THPT Văn Lâm
-          </div>
-        </div>
+    <AuthShell
+      title={isGuestMode ? 'Đóng Quỹ Với Tư Cách Khách' : 'Đăng Ký Tài Khoản'}
+      sideDescription="Đăng ký tài khoản thành viên để theo dõi các khoản đóng góp, kiểm tra tỷ lệ quay thưởng may mắn và tham gia biểu quyết các hoạt động họp lớp."
+      footerContent={footerContent}
+    >
+      {error && <div className="alert-box alert-danger">{error}</div>}
 
-        <div style={{ padding: '24px 0 0 0' }}>
-          {error && (
-            <div
-              style={{
-                padding: '12px 16px',
-                background: 'var(--danger-bg)',
-                color: 'var(--danger-text)',
-                borderRadius: 'var(--radius-md)',
-                marginBottom: '20px',
-                fontSize: '0.9rem',
-              }}
-            >
-              {error}
+      {/* Autocomplete Member Selector */}
+      <div className="form-group">
+        <label className="form-label">
+          Chọn tên của bạn trong danh sách lớp <span className="text-danger">*</span>
+        </label>
+
+        {loadingMembers ? (
+          <div className="text-muted" style={{ padding: '8px 0', fontSize: '0.9rem' }}>
+            Đang tải danh sách thành viên...
+          </div>
+        ) : (
+          <div ref={autocompleteRef} className="autocomplete-container">
+            <div className="autocomplete-input-wrapper">
+              <input
+                type="text"
+                className={`form-input ${selectedMemberId ? 'input-selected' : isGuestMode ? 'input-guest' : ''}`}
+                placeholder="Gõ để tìm tên..."
+                value={searchQuery}
+                onFocus={() => setShowSuggestions(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSuggestions(true);
+                  if (
+                    selectedMemberId &&
+                    e.target.value !== getMemberDisplayName(members.find((m) => m.id === selectedMemberId))
+                  ) {
+                    setSelectedMemberId('');
+                  }
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="autocomplete-clear-btn"
+                  onClick={() => {
+                    setSelectedMemberId('');
+                    setIsGuestMode(false);
+                    setSearchQuery('');
+                    setShowSuggestions(true);
+                  }}
+                  aria-label="Xóa tìm kiếm"
+                >
+                  ✕
+                </button>
+              )}
             </div>
-          )}
 
-          {/* Autocomplete Member Selector (Single Input) */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-              Chọn tên của bạn trong danh sách lớp <span style={{ color: 'var(--danger)' }}>*</span>
-            </label>
-
-            {loadingMembers ? (
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', padding: '8px 0' }}>
-                Đang tải danh sách thành viên...
-              </div>
-            ) : (
-              <div ref={autocompleteRef} style={{ position: 'relative' }}>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    placeholder="Gõ để tìm tên..."
-                    value={searchQuery}
-                    onFocus={() => setShowSuggestions(true)}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setShowSuggestions(true);
-                      if (selectedMemberId && e.target.value !== getMemberDisplayName(members.find((m) => m.id === selectedMemberId))) {
-                        setSelectedMemberId('');
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 38px 10px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      border: `1.5px solid ${selectedMemberId ? 'var(--primary)' : isGuestMode ? '#eab308' : 'var(--border-color)'}`,
-                      fontWeight: selectedMemberId || isGuestMode ? 600 : 400,
-                      background: selectedMemberId || isGuestMode ? 'var(--bg-card-subtle)' : '#ffffff',
-                    }}
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedMemberId('');
-                        setIsGuestMode(false);
-                        setSearchQuery('');
-                        setShowSuggestions(true);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '10px',
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer',
-                        fontSize: '1.1rem',
-                        lineHeight: 1,
-                      }}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                {/* Autocomplete Suggestions Dropdown */}
-                {showSuggestions && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      marginTop: '4px',
-                      background: '#ffffff',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      boxShadow: 'var(--shadow-lg)',
-                      maxHeight: '260px',
-                      overflowY: 'auto',
-                      zIndex: 50,
-                    }}
-                  >
-                    {filteredMembers.length > 0 ? (
-                      filteredMembers.map((m) => (
-                        <div
-                          key={m.id}
-                          onClick={() => handleSelectMember(m.id)}
-                          style={{
-                            padding: '10px 14px',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid var(--border-color)',
-                            fontSize: '0.95rem',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            background: selectedMemberId === m.id ? 'var(--bg-card-subtle)' : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-subtle)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = selectedMemberId === m.id ? 'var(--bg-card-subtle)' : 'transparent')}
-                        >
-                          <span style={{ fontWeight: selectedMemberId === m.id ? 700 : 500 }}>
-                            {getMemberDisplayName(m)}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                        Không tìm thấy thành viên phù hợp
-                      </div>
-                    )}
-
-                    {/* "Không có tên trong danh sách" Option */}
+            {/* Suggestions Dropdown */}
+            {showSuggestions && (
+              <div className="autocomplete-dropdown">
+                {filteredMembers.length > 0 ? (
+                  filteredMembers.map((m) => (
                     <div
-                      onClick={handleSelectGuestMode}
-                      style={{
-                        padding: '12px 14px',
-                        cursor: 'pointer',
-                        borderTop: '1px solid var(--border-color)',
-                        color: 'var(--primary)',
-                        fontWeight: 700,
-                        background: '#f8fafc',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                      key={m.id}
+                      className={`autocomplete-item ${selectedMemberId === m.id ? 'active' : ''}`}
+                      onClick={() => handleSelectMember(m.id)}
                     >
-                      <span>➕</span> Không có tên trong danh sách
+                      <div className="item-name">{m.full_name}</div>
+                      {m.disambiguator && <span className="item-badge">({m.disambiguator})</span>}
                     </div>
+                  ))
+                ) : (
+                  <div className="autocomplete-empty-state">
+                    Không tìm thấy thành viên phù hợp
                   </div>
                 )}
+
+                {/* "Không có tên trong danh sách" Option */}
+                <div className="autocomplete-guest-option" onClick={handleSelectGuestMode}>
+                  <span>➕</span>
+                  <strong>Không có tên trong danh sách</strong>
+                  <span className="guest-tag">(Đóng góp dạng Khách)</span>
+                </div>
               </div>
             )}
           </div>
-
-          {/* Form Content: Guest Mode VS Member Registration */}
-          {isGuestMode ? (
-            /* Guest Flow: Direct to Guest Donation */
-            <form onSubmit={handleGuestSubmit}>
-              <div
-                style={{
-                  padding: '14px 16px',
-                  background: '#fefce8',
-                  border: '1px solid #fef08a',
-                  borderRadius: 'var(--radius-md)',
-                  marginBottom: '20px',
-                  fontSize: '0.88rem',
-                  color: '#854d0e',
-                  lineHeight: 1.5,
-                }}
-              >
-                Bạn đang chọn đóng góp với tư cách khách. Bạn không cần đăng ký tài khoản hay xác thực email.
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                  Tên người đóng góp <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Nhập họ và tên hoặc tổ chức của bạn..."
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '1rem',
-                  }}
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: '100%', padding: '12px', fontSize: '1rem', fontWeight: 700 }}
-              >
-                Đóng quỹ với tư cách khách →
-              </button>
-            </form>
-          ) : (
-            /* Standard Member Registration Form */
-            <form onSubmit={handleSubmitMember}>
-              {/* Username */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                  Tên đăng nhập <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="VD: nguyenhoa12"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '1rem',
-                  }}
-                  required
-                />
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Tối thiểu 3 ký tự, dùng để đăng nhập hệ thống.
-                </div>
-              </div>
-
-              {/* Email */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                  Địa chỉ Email <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="email"
-                  placeholder="VD: yourname@gmail.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '1rem',
-                  }}
-                  required
-                />
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Mã xác thực tài khoản 6 số sẽ được gửi tới email này.
-                </div>
-              </div>
-
-              {/* Password */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                  Mật khẩu <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="Tối thiểu 6 ký tự"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '1rem',
-                  }}
-                  required
-                />
-              </div>
-
-              {/* Confirm Password */}
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                  Xác nhận mật khẩu <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="Nhập lại mật khẩu"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '1rem',
-                  }}
-                  required
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading || !selectedMemberId}
-                style={{ width: '100%', padding: '12px', fontSize: '1rem', fontWeight: 700 }}
-              >
-                {loading ? 'Đang tạo tài khoản...' : 'Đăng Ký Tài Khoản'}
-              </button>
-            </form>
-          )}
-
-          {/* Login Link */}
-          <div style={{ textAlign: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', fontSize: '0.9rem' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Bạn đã có tài khoản? </span>
-            <button
-              type="button"
-              className="btn-link"
-              onClick={onGoToLogin}
-              style={{ fontWeight: 700, color: 'var(--primary)' }}
-            >
-              Đăng nhập ngay
-            </button>
-          </div>
-        </div>
+        )}
       </div>
-    </div>
+
+      {/* Form Content: Guest Mode VS Member Registration */}
+      {isGuestMode ? (
+        <form onSubmit={handleGuestSubmit}>
+          <div className="alert-box alert-warning">
+            Bạn đang chọn đóng góp với tư cách khách. Bạn không cần đăng ký tài khoản hay xác thực email.
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Tên người đóng góp <span className="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Nhập họ và tên hoặc tổ chức của bạn..."
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+
+          <button type="submit" className="btn btn-primary btn-block btn-lg">
+            Đóng quỹ với tư cách khách →
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleSubmitMember}>
+          {/* Username */}
+          <div className="form-group">
+            <label className="form-label">
+              Tên đăng nhập <span className="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="VD: nguyenhoa12"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+            <div className="form-hint">Tối thiểu 3 ký tự, dùng để đăng nhập hệ thống.</div>
+          </div>
+
+          {/* Email */}
+          <div className="form-group">
+            <label className="form-label">
+              Địa chỉ Email <span className="text-danger">*</span>
+            </label>
+            <input
+              type="email"
+              className="form-input"
+              placeholder="VD: yourname@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <div className="form-hint">Mã xác thực tài khoản 6 số sẽ được gửi tới email này.</div>
+          </div>
+
+          {/* Password */}
+          <div className="form-group">
+            <label className="form-label">
+              Mật khẩu <span className="text-danger">*</span>
+            </label>
+            <input
+              type="password"
+              className="form-input"
+              placeholder="Tối thiểu 6 ký tự"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Confirm Password */}
+          <div className="form-group">
+            <label className="form-label">
+              Xác nhận mật khẩu <span className="text-danger">*</span>
+            </label>
+            <input
+              type="password"
+              className="form-input"
+              placeholder="Nhập lại mật khẩu"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-block btn-lg"
+            disabled={loading || !selectedMemberId}
+          >
+            {loading ? 'Đang đăng ký...' : 'Hoàn tất đăng ký'}
+          </button>
+        </form>
+      )}
+    </AuthShell>
   );
 };

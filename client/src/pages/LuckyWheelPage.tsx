@@ -733,26 +733,12 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
         </div>
       )}
 
-      {/* MAIN 16:9 SPLIT PRESENTATION LAYOUT */}
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '1560px',
-          flex: 1,
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)',
-          gap: '16px',
-          alignItems: 'center',
-          overflow: 'hidden',
-          minHeight: 0,
-          boxSizing: 'border-box',
-        }}
-      >
+      {/* MAIN 16:9 SPLIT PRESENTATION LAYOUT / MOBILE PORTRAIT FLOW */}
+      <div className="lucky-wheel-layout-grid">
         {/* ========================================================================= */}
         {/* LEFT COLUMN: LARGE LUCKY WHEEL CANVAS */}
         {/* ========================================================================= */}
-        <div
-          style={{
+        <div className="lucky-wheel-left-col" style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -763,8 +749,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             boxSizing: 'border-box',
             minWidth: 0,
             width: '100%',
-          }}
-        >
+          }}>
           {/* Top Golden Arrow Pointer */}
           <div
             style={{
@@ -787,6 +772,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
 
           {/* Canvas Element */}
           <div
+            className="lucky-wheel-canvas-box"
             style={{
               position: 'relative',
               width: '100%',
@@ -809,13 +795,30 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
               }}
             />
           </div>
+
+          {/* Mobile Main Draw Action Trigger */}
+          {isAdmin && activePrize && !isSpinningLocal && (
+            <div className="mobile-only" style={{ width: '100%', maxWidth: '360px', marginTop: '12px' }}>
+              <button
+                onClick={() => handleTriggerDraw(activePrize.prizeId)}
+                disabled={triggering || isSpinningLocal}
+                className="btn btn-primary btn-block btn-lg"
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  boxShadow: '0 0 20px rgba(37, 99, 235, 0.6)',
+                  fontWeight: 800,
+                }}
+              >
+                {triggering ? 'Đang kích hoạt...' : `🎯 Bắt đầu quay ${activePrize.prizeTitle}`}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ========================================================================= */}
         {/* RIGHT COLUMN: PRIZE / WINNER / ADAPTIVE LEGEND / COMPACT HALL OF FAME */}
         {/* ========================================================================= */}
-        <div
-          style={{
+        <div className="lucky-wheel-right-col" style={{
             display: 'flex',
             flexDirection: 'column',
             gap: '10px',
@@ -829,8 +832,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             width: '100%',
             maxWidth: '100%',
             minWidth: 0,
-          }}
-        >
+          }}>
           {/* 1. Winner Reveal Celebration Banner (Box-Sizing Safe, Full Visible Borders on All 4 Sides) */}
           {revealedWinner && (
             <div
@@ -903,6 +905,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
 
             {/* 2-Column Responsive Grid of Members (Sorted by Probability Descending) */}
             <div
+              className="lucky-wheel-legend-grid"
               style={{
                 display: 'grid',
                 gridTemplateColumns: segments.length > 8 ? 'repeat(2, 1fr)' : '1fr',

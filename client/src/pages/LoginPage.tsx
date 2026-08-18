@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AuthShell } from '../components/AuthShell.js';
 
 interface LoginPageProps {
   onLoginSuccess: (user: any) => void;
@@ -46,125 +47,76 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   };
 
+  const footerContent = (
+    <div className="auth-footer-text">
+      Chưa có tài khoản thành viên?{' '}
+      <button type="button" onClick={onGoToRegister} className="btn-link-inline">
+        Đăng ký ngay
+      </button>
+    </div>
+  );
+
   return (
-    <div style={{ maxWidth: '440px', margin: '40px auto' }}>
-      <div className="card">
-        <div className="card-header" style={{ textAlign: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '1px' }}>
-            KỶ NIỆM 10 NĂM RA TRƯỜNG
-          </div>
-          <h1 className="card-title" style={{ fontSize: '1.4rem', margin: '6px 0 2px 0' }}>
-            Đăng Nhập
-          </h1>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Lớp A1 — Khóa 48 (2013–2016) — Trường THPT Văn Lâm
-          </div>
-        </div>
-
-        <div style={{ padding: '24px 0 0 0' }}>
-          {error && (
-            <div
-              style={{
-                padding: '12px 16px',
-                background: 'var(--danger-bg)',
-                color: 'var(--danger-text)',
-                borderRadius: 'var(--radius-md)',
-                marginBottom: '16px',
-                fontSize: '0.9rem',
-              }}
-            >
-              <div>{error}</div>
-              {unverifiedEmail && (
-                <button
-                  type="button"
-                  onClick={() => onGoToVerify(unverifiedEmail)}
-                  style={{
-                    marginTop: '8px',
-                    background: 'var(--primary)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    padding: '6px 12px',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  👉 Nhập mã xác thực email ngay
-                </button>
-              )}
-            </div>
-          )}
-
-          <form onSubmit={handleLogin}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                Tên đăng nhập hoặc Email
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="VD: tuananh hoặc email@domain.com"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-color)',
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem' }}>
-                Mật khẩu
-              </label>
-              <input
-                type="password"
-                required
-                placeholder="Nhập mật khẩu của bạn"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-color)',
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ width: '100%', padding: '12px', fontWeight: 700, fontSize: '1rem' }}
-              disabled={loading}
-            >
-              {loading ? 'Đang xác thực...' : 'Đăng nhập'}
-            </button>
-          </form>
-
-          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Chưa có tài khoản?{' '}
+    <AuthShell
+      title="Đăng Nhập Thành Viên"
+      sideDescription="Đăng nhập để xem thông tin đóng quỹ cá nhân, lịch sử đóng góp và tỷ lệ quay thưởng may mắn tại đêm Gala kỷ niệm 10 năm."
+      footerContent={footerContent}
+    >
+      {error && (
+        <div className="alert-box alert-danger">
+          <div>{error}</div>
+          {unverifiedEmail && (
             <button
               type="button"
-              onClick={onGoToRegister}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--primary)',
-                fontWeight: 600,
-                cursor: 'pointer',
-                padding: '0 4px',
-                textDecoration: 'underline',
-              }}
+              onClick={() => onGoToVerify(unverifiedEmail)}
+              className="btn btn-primary btn-sm"
+              style={{ marginTop: '8px' }}
             >
-              Đăng ký ngay
+              👉 Nhập mã xác thực email ngay
             </button>
-          </div>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+
+      <form onSubmit={handleLogin}>
+        <div className="form-group">
+          <label className="form-label">
+            Tên đăng nhập hoặc Email <span className="text-danger">*</span>
+          </label>
+          <input
+            type="text"
+            className="form-input"
+            required
+            placeholder="VD: nguyenhoa12 hoặc email@gmail.com"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            Mật khẩu <span className="text-danger">*</span>
+          </label>
+          <input
+            type="password"
+            className="form-input"
+            required
+            placeholder="Nhập mật khẩu của bạn"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="btn btn-primary btn-block btn-lg"
+          disabled={loading}
+        >
+          {loading ? 'Đang xác thực...' : 'Đăng nhập'}
+        </button>
+      </form>
+    </AuthShell>
   );
 };

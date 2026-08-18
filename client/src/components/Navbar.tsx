@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { formatVND } from '../utils/format.js';
 
 interface NavbarProps {
@@ -14,153 +14,197 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   onLogout,
 }) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleNavClick = (tab: string) => {
+    onSelectTab(tab);
+    setMobileMenuOpen(false);
+  };
+
+  const handleLogoutClick = () => {
+    onLogout();
+    setMobileMenuOpen(false);
+  };
+
+  const navItems = [
+    { id: 'home', label: 'Trang chủ' },
+    { id: 'activities', label: 'Kế hoạch & Hoạt động' },
+    { id: 'lucky-wheel', label: '🎡 Quay số may mắn' },
+    { id: 'contribute', label: 'Đóng quỹ' },
+    { id: 'contributors', label: 'Đóng góp' },
+    { id: 'expenses', label: 'Chi tiêu' },
+    { id: 'settlement', label: 'Quyết toán' },
+  ];
+
+  if (currentUser && currentUser.role === 'ADMIN') {
+    navItems.push({ id: 'admin', label: 'Quản trị' });
+  }
+
   return (
     <header className="navbar">
-      {/* PERSONALIZED TOP BAR FOR LOGGED-IN MEMBERS/ADMINS */}
+      {/* DESKTOP PERSONALIZED BAR (Visible only on desktop >= 768px when logged in) */}
       {currentUser && (
-        <div
-          style={{
-            background: 'linear-gradient(90deg, #1e3a8a 0%, #2563eb 100%)',
-            color: '#ffffff',
-            padding: '6px 16px',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '8px',
-            borderBottom: '1px solid rgba(255,255,255,0.15)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 600 }}>
-              👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
-            </span>
-            <span style={{ opacity: 0.6 }}>|</span>
-            <span>
-              Đã đóng: <strong style={{ color: '#fef08a' }}>{formatVND(currentUser.totalContributed || 0)}</strong>
-            </span>
-            <span style={{ opacity: 0.6 }}>|</span>
-            <span>
-              Tỷ lệ quay thưởng: <strong style={{ color: '#86efac' }}>{currentUser.lotteryProbabilityDisplay || '0%'}</strong>
-            </span>
-          </div>
-          <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>
-            * 6.000.000 ₫ quỹ lớp nền không tham gia quay thưởng
+        <div className="desktop-member-bar">
+          <div className="desktop-member-bar-content">
+            <div className="member-identity-group">
+              <span className="member-name-badge">
+                👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
+              </span>
+              <span className="member-bar-divider">•</span>
+              <span className="member-metric">
+                Đã đóng: <strong>{formatVND(currentUser.totalContributed || 0)}</strong>
+              </span>
+              <span className="member-bar-divider">•</span>
+              <span className="member-metric">
+                Tỷ lệ quay thưởng: <strong className="lottery-pct">{currentUser.lotteryProbabilityDisplay || '0%'}</strong>
+              </span>
+            </div>
+            <div className="member-notice-text">
+              * 6.000.000 ₫ quỹ lớp nền không tham gia quay thưởng
+            </div>
           </div>
         </div>
       )}
 
+      {/* PRIMARY NAVBAR ROW */}
       <div className="navbar-inner">
-        <a href="#home" onClick={() => onSelectTab('home')} className="brand-logo">
-          🎓 Lớp A1 — Khóa 48 (2013–2016)
+        {/* Brand Identity */}
+        <a
+          href="#home"
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavClick('home');
+          }}
+          className="brand-logo"
+        >
+          <span className="brand-icon">🎓</span>
+          <div className="brand-text-group">
+            <span className="brand-main-title">Lớp A1 — Khóa 48</span>
+            <span className="brand-sub-title">2013–2016 • THPT Văn Lâm</span>
+          </div>
         </a>
-        <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            className={`btn-link nav-link ${currentTab === 'home' ? 'active' : ''}`}
-            onClick={() => onSelectTab('home')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            Trang chủ
-          </button>
-          <button
-            className={`btn-link nav-link ${currentTab === 'activities' ? 'active' : ''}`}
-            onClick={() => onSelectTab('activities')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-          >
-            Kế hoạch & Hoạt động
-          </button>
-          <button
-            className={`btn-link nav-link ${currentTab === 'lucky-wheel' ? 'active' : ''}`}
-            onClick={() => onSelectTab('lucky-wheel')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, color: '#ec4899' }}
-          >
-            🎡 Quay số
-          </button>
-          <button
-            className={`btn-link nav-link ${currentTab === 'contribute' ? 'active' : ''}`}
-            onClick={() => onSelectTab('contribute')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            Đóng quỹ
-          </button>
-          <button
-            className={`btn-link nav-link ${currentTab === 'contributors' ? 'active' : ''}`}
-            onClick={() => onSelectTab('contributors')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            Đóng góp
-          </button>
-          <button
-            className={`btn-link nav-link ${currentTab === 'expenses' ? 'active' : ''}`}
-            onClick={() => onSelectTab('expenses')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            Chi tiêu
-          </button>
-          <button
-            className={`btn-link nav-link ${currentTab === 'settlement' ? 'active' : ''}`}
-            onClick={() => onSelectTab('settlement')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            Quyết toán
-          </button>
 
-          {/* ADMIN-ONLY NAVIGATION */}
-          {currentUser && currentUser.role === 'ADMIN' && (
+        {/* DESKTOP NAVIGATION LINKS */}
+        <nav className="desktop-nav-links" aria-label="Menu chính">
+          {navItems.map((item) => (
             <button
-              className={`btn-link nav-link ${currentTab === 'admin' ? 'active' : ''}`}
-              onClick={() => onSelectTab('admin')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: 'var(--primary)' }}
+              key={item.id}
+              className={`nav-link ${currentTab === item.id ? 'active' : ''} ${item.id === 'lucky-wheel' ? 'nav-link-wheel' : ''}`}
+              onClick={() => handleNavClick(item.id)}
             >
-              Quản trị
+              {item.label}
             </button>
-          )}
+          ))}
 
-          {/* AUTH STATUS BUTTONS */}
+          {/* Desktop Auth Controls */}
           {currentUser ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '6px' }}>
-              <button
-                className="btn-link nav-link"
-                onClick={onLogout}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                Đăng xuất
-              </button>
-            </div>
+            <button className="nav-link nav-link-logout" onClick={handleLogoutClick}>
+              Đăng xuất
+            </button>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+            <div className="desktop-auth-buttons">
               <button
-                className={`btn-link nav-link ${currentTab === 'register' ? 'active' : ''}`}
-                onClick={() => onSelectTab('register')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                className={`nav-link ${currentTab === 'register' ? 'active' : ''}`}
+                onClick={() => handleNavClick('register')}
               >
                 Đăng ký
               </button>
               <button
-                className={`btn-link nav-link ${currentTab === 'login' ? 'active' : ''}`}
-                onClick={() => onSelectTab('login')}
-                style={{
-                  background: 'none',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  padding: '4px 12px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                }}
+                className={`btn btn-primary btn-sm ${currentTab === 'login' ? 'active' : ''}`}
+                onClick={() => handleNavClick('login')}
               >
                 Đăng nhập
               </button>
             </div>
           )}
         </nav>
+
+        {/* MOBILE HAMBURGER TOGGLE BUTTON */}
+        <button
+          className={`navbar-toggle ${mobileMenuOpen ? 'open' : ''}`}
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label={mobileMenuOpen ? 'Đóng menu' : 'Mở menu điều hướng'}
+          aria-expanded={mobileMenuOpen}
+        >
+          <span className="hamburger-box">
+            <span className="hamburger-inner" />
+          </span>
+        </button>
       </div>
+
+      {/* MOBILE DROPDOWN / DRAWER */}
+      {mobileMenuOpen && (
+        <div className="mobile-nav-drawer" role="dialog" aria-modal="true">
+          {/* Logged in member status card on mobile */}
+          {currentUser && (
+            <div className="mobile-member-card">
+              <div className="mobile-member-header">
+                <span className="mobile-member-avatar">👤</span>
+                <div className="mobile-member-info">
+                  <div className="mobile-member-name">
+                    {currentUser.fullName}
+                    {currentUser.role === 'ADMIN' && <span className="admin-badge">Admin</span>}
+                  </div>
+                  <div className="mobile-member-username">@{currentUser.username}</div>
+                </div>
+              </div>
+
+              <div className="mobile-member-metrics">
+                <div className="mobile-metric-box">
+                  <div className="mobile-metric-label">Đã đóng</div>
+                  <div className="mobile-metric-value text-primary">
+                    {formatVND(currentUser.totalContributed || 0)}
+                  </div>
+                </div>
+                <div className="mobile-metric-box">
+                  <div className="mobile-metric-label">Tỷ lệ quay thưởng</div>
+                  <div className="mobile-metric-value text-success">
+                    {currentUser.lotteryProbabilityDisplay || '0%'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Navigation Links list */}
+          <nav className="mobile-nav-list">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                className={`mobile-nav-item ${currentTab === item.id ? 'active' : ''} ${item.id === 'lucky-wheel' ? 'wheel-highlight' : ''}`}
+                onClick={() => handleNavClick(item.id)}
+              >
+                <span>{item.label}</span>
+                <span className="mobile-nav-arrow">›</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Mobile Auth Actions */}
+          <div className="mobile-auth-actions">
+            {currentUser ? (
+              <button className="btn btn-danger btn-block" onClick={handleLogoutClick}>
+                🚪 Đăng xuất
+              </button>
+            ) : (
+              <div className="mobile-auth-guest-grid">
+                <button
+                  className="btn btn-outline btn-block"
+                  onClick={() => handleNavClick('register')}
+                >
+                  Đăng ký tài khoản
+                </button>
+                <button
+                  className="btn btn-primary btn-block"
+                  onClick={() => handleNavClick('login')}
+                >
+                  Đăng nhập
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 };
