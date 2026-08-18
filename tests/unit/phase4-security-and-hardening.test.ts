@@ -82,14 +82,11 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
 
   // 3. Input Validation
   it('validates contribution amounts strictly as positive integers without arbitrary 10k minimum', async () => {
-    const members = db.prepare('SELECT id FROM members LIMIT 1').all() as any[];
-    const memberId = members[0].id;
-
     // Valid small positive integer (e.g. 5000 VND is now accepted)
     const resValidSmall = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId, amount: 5000 },
+      payload: { customName: 'Khách Ủng Hộ', amount: 5000 },
     });
     expect(resValidSmall.statusCode).toBe(200);
 
@@ -97,7 +94,7 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
     const resZero = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId, amount: 0 },
+      payload: { customName: 'Khách Ủng Hộ', amount: 0 },
     });
     expect(resZero.statusCode).toBe(400);
 
@@ -105,7 +102,7 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
     const resNegative = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId, amount: -50000 },
+      payload: { customName: 'Khách Ủng Hộ', amount: -50000 },
     });
     expect(resNegative.statusCode).toBe(400);
 
@@ -113,7 +110,7 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
     const resFloat = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId, amount: 500000.5 },
+      payload: { customName: 'Khách Ủng Hộ', amount: 5000.5 },
     });
     expect(resFloat.statusCode).toBe(400);
 
@@ -121,7 +118,7 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
     const resTooHigh = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId, amount: 2000000000 },
+      payload: { customName: 'Khách Ủng Hộ', amount: 2000000000 },
     });
     expect(resTooHigh.statusCode).toBe(400);
   });

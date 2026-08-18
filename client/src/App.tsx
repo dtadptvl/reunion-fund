@@ -25,7 +25,13 @@ export const App: React.FC = () => {
 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState<string>('');
-  const [guestPrefillName, setGuestPrefillName] = useState<string>('');
+  const [guestPrefillName, setGuestPrefillName] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('guest_contributor_name') || '';
+    } catch {
+      return '';
+    }
+  });
 
   // Unified navigateTo function that syncs React state with window.history
   const navigateTo = useCallback((target: string, options?: { replace?: boolean }) => {
@@ -69,9 +75,17 @@ export const App: React.FC = () => {
       .then((data) => {
         if (data?.user) {
           setCurrentUser(data.user);
+          setGuestPrefillName('');
+          try {
+            sessionStorage.removeItem('guest_contributor_name');
+          } catch (e) {
+            void e;
+          }
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        void e;
+      });
   }, []);
 
   const handleLogout = async () => {
@@ -91,6 +105,12 @@ export const App: React.FC = () => {
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
+    setGuestPrefillName('');
+    try {
+      sessionStorage.removeItem('guest_contributor_name');
+    } catch (e) {
+      void e;
+    }
     if (user.role === 'ADMIN') {
       navigateTo('/admin');
     } else {
@@ -100,6 +120,11 @@ export const App: React.FC = () => {
 
   const handleGuestContributeRedirect = (name: string) => {
     setGuestPrefillName(name);
+    try {
+      sessionStorage.setItem('guest_contributor_name', name);
+    } catch (e) {
+      void e;
+    }
     navigateTo('/contribute');
   };
 
@@ -135,6 +160,14 @@ export const App: React.FC = () => {
           <ContributePage
             currentUser={currentUser}
             initialGuestName={guestPrefillName}
+            onClearGuest={() => {
+              setGuestPrefillName('');
+              try {
+                sessionStorage.removeItem('guest_contributor_name');
+              } catch (e) {
+                void e;
+              }
+            }}
             onGoToLogin={() => navigateTo('/login')}
             onGoToRegister={() => navigateTo('/register')}
           />

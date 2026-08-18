@@ -31,6 +31,7 @@ describe('V2 Consolidation Patch — Lucky Wheel, Contribution Identity, Registr
 
     app = buildApp({
       db,
+      authService,
       emailProvider: mockEmailProvider,
     });
     await app.ready();
@@ -128,11 +129,20 @@ describe('V2 Consolidation Patch — Lucky Wheel, Contribution Identity, Registr
     const members = memberService.searchMembers('', 2);
     const member = members[0];
 
+    const sessionToken = authService.createSession({
+      userId: 'user-member',
+      username: 'member1',
+      fullName: member.full_name,
+      role: 'MEMBER',
+      memberId: member.id,
+      email: 'member1@example.com',
+    });
+
     // Authenticated member intent creation
     const memberRes = await supertest(app.server)
       .post('/api/v1/public/intent')
+      .set('Cookie', [`session_token=${sessionToken}`])
       .send({
-        memberId: member.id,
         amount: 500000,
       });
 

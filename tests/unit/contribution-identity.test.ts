@@ -96,13 +96,15 @@ describe('Account-Bound Contribution Identity & Tamper Protection', () => {
     expect(data.error).toContain('Không thể tạo mã đóng quỹ dưới danh tính thành viên khác');
   });
 
-  it('allows guest contribution with customName when unauthenticated', async () => {
+  it('allows guest contribution with customName when unauthenticated without creating an account', async () => {
+    const userCountBefore = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any).c;
+
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
       payload: {
-        customName: 'Khách mời danh dự',
-        amount: 500000,
+        customName: 'Bác Nguyễn Văn A (Phụ huynh)',
+        amount: 600000,
       },
     });
 
@@ -111,6 +113,48 @@ describe('Account-Bound Contribution Identity & Tamper Protection', () => {
     expect(data.paymentCode).toBeDefined();
     expect(data.externalContributorId).toBeDefined();
     expect(data.memberId).toBeNull();
+    expect(data.expectedAmount).toBe(600000);
+
+    // Verify DB intent state
+    const intent = db.prepare('SELECT * FROM payment_intents WHERE payment_code = ?').get(data.paymentCode) as any;
+    expect(intent.member_id).toBeNull();
+    expect(intent.external_contributor_id).toBe(data.externalContributorId);
+
+    // Verify NO user account was created in users table
+    const userCountAfter = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any).c;
+    expect(userCountAfter).toBe(userCountBefore);
+  });
+
+  it('rejects anonymous request attempting to submit a canonical memberId without session', async () => {
+    const member = db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/public/intent',
+      payload: {
+        memberId: member.id,
+        amount: 500000,
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const data = JSON.parse(res.body);
+    expect(data.error).toContain('Vui lòng đăng nhập tài khoản để đóng quỹ dưới danh nghĩa thành viên lớp');
+  });
+
+  it('rejects guest attempting to impersonate a canonical roster member by name', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/public/intent',
+      payload: {
+        customName: 'Dương Tuấn Anh',
+        amount: 500000,
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const data = JSON.parse(res.body);
+    expect(data.error).toContain('là thành viên trong danh sách lớp');
   });
 
   it('rejects intent with non-positive integer amounts', async () => {

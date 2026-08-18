@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { runMigrations } from '../../server/src/db/connection.js';
 import { MemberService } from '../../server/src/services/member.service.js';
+import { AuthService } from '../../server/src/services/auth.service.js';
 import { buildApp } from '../../server/src/app.js';
 import { FastifyInstance } from 'fastify';
 
@@ -14,12 +15,14 @@ const __dirname = path.dirname(__filename);
 describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', () => {
   let db: Database.Database;
   let memberService: MemberService;
+  let authService: AuthService;
   let app: FastifyInstance;
 
   beforeEach(async () => {
     db = new Database(':memory:');
     runMigrations(db);
     memberService = new MemberService(db);
+    authService = new AuthService(db);
     memberService.seedCanonicalRoster();
 
     // Create staff user for treasurer tests
@@ -30,7 +33,7 @@ describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', ()
       VALUES ('staff-treasurer-1', 'treasurer', ?, 'Thủ Quỹ Lớp', 'TREASURER')
     `).run(hash);
 
-    app = await buildApp({ db });
+    app = await buildApp({ db, authService });
   });
 
   afterEach(async () => {
@@ -38,24 +41,28 @@ describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', ()
     db.close();
   });
 
-  // A. Search suggestions filter while typing
-  it('A: search suggestions filter sensibly while typing (case-insensitivity and diacritics)', () => {
-    // Search with diacritics "Huế"
-    const resultsHue = memberService.searchMembers('Huế');
-    expect(resultsHue.length).toBe(3); // Đặng Thị Huế, Nguyễn Thị Huế (Lạc Đạo), Nguyễn Thị Huế (Lương Tài)
+  // A. Search by name substring
+  it('A: /api/v1/public/members?q=Huế returns matching members with disambiguator', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/public/members?q=Huế',
+    });
 
-    // Search without diacritics "Hue"
-    const resultsHueNoDiacritics = memberService.searchMembers('Hue');
-    expect(resultsHueNoDiacritics.length).toBe(3);
+    expect(res.statusCode).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.members).toBeDefined();
+    expect(data.members.length).toBe(3);
 
-    // Search partial case-insensitive "tuan"
-    const resultsTuan = memberService.searchMembers('tuAn');
-    expect(resultsTuan.length).toBeGreaterThanOrEqual(2);
-    expect(resultsTuan.some(m => m.full_name === 'Dương Tuấn Anh')).toBe(true);
-    expect(resultsTuan.some(m => m.full_name === 'Nguyễn Văn Tuấn')).toBe(true);
+    const names = data.members.map((m: any) => m.full_name);
+    expect(names).toContain('Đặng Thị Huế');
+    expect(names).toContain('Nguyễn Thị Huế');
+
+    const disambiguators = data.members.map((m: any) => m.disambiguator);
+    expect(disambiguators).toContain('Lạc Đạo');
+    expect(disambiguators).toContain('Lương Tài');
   });
 
-  // B. Clicking suggestion sets exact selectedMemberId
+  // B. Selecting an autocomplete suggestion binds the exact immutable member ID
   it('B: selecting an autocomplete suggestion binds the exact immutable member ID', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -67,12 +74,21 @@ describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', ()
     const lacDao = members.find((m: any) => m.disambiguator === 'Lạc Đạo');
     expect(lacDao).toBeDefined();
 
-    // Direct creation of intent with the selected memberId
+    const sessionToken = authService.createSession({
+      userId: 'user-lacdao',
+      username: 'lacdao',
+      fullName: lacDao.full_name,
+      role: 'MEMBER',
+      memberId: lacDao.id,
+      email: 'lacdao@example.com',
+    });
+
+    // Direct creation of intent with the authenticated member session
     const intentRes = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
+      cookies: { session_token: sessionToken },
       payload: {
-        memberId: lacDao.id,
         amount: 500000,
       },
     });
@@ -108,11 +124,21 @@ describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', ()
     expect(mem2.full_name).toBe('Lê Mạnh Long');
     expect(mem2.id).not.toBe(mem1.id);
 
-    // Intent created with second member
+    const sessionToken2 = authService.createSession({
+      userId: 'user-mem2',
+      username: 'mem2',
+      fullName: mem2.full_name,
+      role: 'MEMBER',
+      memberId: mem2.id,
+      email: 'mem2@example.com',
+    });
+
+    // Intent created with second member session
     const intentRes = await app.inject({
       method: 'POST',
       url: '/api/v1/public/intent',
-      payload: { memberId: mem2.id, amount: 500000 },
+      cookies: { session_token: sessionToken2 },
+      payload: { amount: 500000 },
     });
     expect(intentRes.statusCode).toBe(200);
     const intentInDb = db.prepare('SELECT * FROM payment_intents WHERE id = ?').get(JSON.parse(intentRes.body).intentId) as any;

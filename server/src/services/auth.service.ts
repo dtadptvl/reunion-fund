@@ -120,6 +120,14 @@ export class AuthService {
     this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%'").run();
     this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh' WHERE full_name LIKE '%Thủ Quỹ%'").run();
 
+    const tuanAnh = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as MemberRow | undefined;
+    if (tuanAnh) {
+      const existingUser = this.db.prepare('SELECT username FROM users WHERE member_id = ?').get(tuanAnh.id) as { username: string } | undefined;
+      if (!existingUser || existingUser.username === 'admin') {
+        this.db.prepare("UPDATE users SET member_id = ?, role = 'ADMIN', full_name = ? WHERE username = 'admin'").run(tuanAnh.id, tuanAnh.full_name);
+      }
+    }
+
     const adminMemberIds: string[] = [];
 
     for (const adminName of DEFAULT_ADMIN_NAMES) {
@@ -137,11 +145,11 @@ export class AuthService {
       }
     }
 
-    // Downgrade any non-default-admin or unlinked user accounts to MEMBER role
+    // Downgrade any non-default-admin or unlinked user accounts to MEMBER role (preserving username 'admin')
     if (adminMemberIds.length > 0) {
       const placeholders = adminMemberIds.map(() => '?').join(',');
       this.db
-        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE member_id IS NULL OR member_id NOT IN (${placeholders})`)
+        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE (member_id IS NULL AND username != 'admin') OR (member_id IS NOT NULL AND member_id NOT IN (${placeholders}))`)
         .run(...adminMemberIds);
     }
   }

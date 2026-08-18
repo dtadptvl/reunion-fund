@@ -4,12 +4,15 @@ import { formatVND } from '../utils/format.js';
 interface ContributePageProps {
   currentUser?: any;
   initialGuestName?: string;
+  onClearGuest?: () => void;
   onGoToLogin?: () => void;
   onGoToRegister?: () => void;
 }
 
 export const ContributePage: React.FC<ContributePageProps> = ({
   currentUser,
+  initialGuestName = '',
+  onClearGuest,
   onGoToLogin,
   onGoToRegister,
 }) => {
@@ -19,10 +22,19 @@ export const ContributePage: React.FC<ContributePageProps> = ({
   const [customAmountInput, setCustomAmountInput] = useState<string>('');
   const [isCustomAmount, setIsCustomAmount] = useState(false);
 
+  // Guest name state
+  const [guestName, setGuestName] = useState<string>(initialGuestName);
+
   const [loading, setLoading] = useState(false);
   const [intentData, setIntentData] = useState<any>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (initialGuestName) {
+      setGuestName(initialGuestName);
+    }
+  }, [initialGuestName]);
 
   // Fetch suggested config
   useEffect(() => {
@@ -59,6 +71,9 @@ export const ContributePage: React.FC<ContributePageProps> = ({
     return () => clearInterval(interval);
   }, [intentData, isPaid]);
 
+  const isGuestMode = !currentUser && Boolean(guestName.trim());
+  const canContribute = Boolean(currentUser) || isGuestMode;
+
   const handleCreateQR = async () => {
     setErrorMessage('');
     const finalAmount = isCustomAmount ? Number(customAmountInput) : (suggestedAmount || 0);
@@ -68,17 +83,22 @@ export const ContributePage: React.FC<ContributePageProps> = ({
       return;
     }
 
-    if (!currentUser) {
+    if (!canContribute) {
       setErrorMessage('Vui lòng đăng nhập tài khoản thành viên để đóng quỹ.');
       return;
     }
 
     setLoading(true);
     try {
-      const payload = {
-        memberId: currentUser.memberId,
+      const payload: any = {
         amount: finalAmount,
       };
+
+      if (currentUser) {
+        payload.memberId = currentUser.memberId;
+      } else if (isGuestMode) {
+        payload.customName = guestName.trim();
+      }
 
       const res = await fetch('/api/v1/public/intent', {
         method: 'POST',
@@ -99,6 +119,10 @@ export const ContributePage: React.FC<ContributePageProps> = ({
     }
   };
 
+  const contributorDisplayName = currentUser
+    ? currentUser.fullName
+    : guestName.trim() || 'Bạn';
+
   return (
     <div style={{ maxWidth: '640px', margin: '0 auto' }}>
       <div className="card">
@@ -112,7 +136,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
           </div>
         )}
 
-        {!currentUser ? (
+        {!canContribute ? (
           /* Unauthenticated State: Clear guidance to Log in / Register */
           <div style={{ padding: '24px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🔐</div>
@@ -151,28 +175,65 @@ export const ContributePage: React.FC<ContributePageProps> = ({
             </div>
           </div>
         ) : !intentData ? (
-          /* Authenticated Member / Admin Flow */
+          /* Step 1: Amount Selection & QR Generation (Member or Guest) */
           <div>
-            {/* Account Identity Badge */}
-            <div
-              style={{
-                padding: '16px 20px',
-                background: 'var(--bg-card-subtle)',
-                borderRadius: 'var(--radius-md)',
-                border: '1.5px solid var(--primary)',
-                marginBottom: '24px',
-              }}
-            >
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                Tài khoản thành viên lớp đã xác thực
+            {/* Identity Badge */}
+            {currentUser ? (
+              <div
+                style={{
+                  padding: '16px 20px',
+                  background: 'var(--bg-card-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1.5px solid var(--primary)',
+                  marginBottom: '24px',
+                }}
+              >
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Tài khoản thành viên lớp đã xác thực
+                </div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)' }}>
+                  👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Khoản đóng sẽ tự động cập nhật vào danh sách đóng góp và hồ sơ của bạn ngay khi chuyển khoản.
+                </div>
               </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)' }}>
-                👤 {currentUser.fullName} {currentUser.role === 'ADMIN' ? '(Admin)' : ''}
+            ) : (
+              <div
+                style={{
+                  padding: '16px 20px',
+                  background: 'var(--bg-card-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1.5px solid #d97706',
+                  marginBottom: '24px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: '#b45309', fontWeight: 600, marginBottom: '4px' }}>
+                      Đóng quỹ với tư cách khách ủng hộ
+                    </div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#92400e' }}>
+                      👤 {guestName}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      setGuestName('');
+                      if (onClearGuest) onClearGuest();
+                    }}
+                    style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                  >
+                    Đổi thông tin
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                  Khoản đóng góp của khách sẽ được ghi nhận minh bạch dưới tên bạn và chờ ban quản trị duyệt.
+                </div>
               </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Khoản đóng sẽ tự động cập nhật vào danh sách đóng góp và hồ sơ của bạn ngay khi chuyển khoản.
-              </div>
-            </div>
+            )}
 
             {/* Choose Amount */}
             <div style={{ marginBottom: '28px' }}>
@@ -274,7 +335,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎉</div>
                 <h2 style={{ color: 'var(--primary)', marginBottom: '8px' }}>Đóng Quỹ Thành Công!</h2>
                 <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-                  Cảm ơn <strong>{currentUser.fullName}</strong> đã đóng góp <strong>{formatVND(intentData.expectedAmount)}</strong> vào quỹ lớp.
+                  Cảm ơn <strong>{contributorDisplayName}</strong> đã đóng góp <strong>{formatVND(intentData.expectedAmount)}</strong> vào quỹ lớp.
                 </p>
                 <button
                   className="btn btn-primary"

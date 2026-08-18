@@ -11,6 +11,7 @@ import {
   generatePaymentCode,
   formatTransferContent,
   generateBankDisplayName,
+  removeVietnameseDiacritics,
 } from '../services/vietqr.service.js';
 import { AuthService } from '../services/auth.service.js';
 import { config } from '../config/env.js';
@@ -319,19 +320,26 @@ export async function publicRoutes(
       memberId = member.id;
       bankDisplayName = member.bank_display_name;
     } else if (body.memberId) {
-      const member = db
-        .prepare('SELECT * FROM members WHERE id = ?')
-        .get(body.memberId) as any;
-      if (!member) {
-        return reply.status(404).send({ error: 'Không tìm thấy thành viên trong danh sách' });
-      }
-      memberId = member.id;
-      bankDisplayName = member.bank_display_name;
+      // Unauthenticated request attempting to submit a canonical memberId: REJECT!
+      return reply.status(403).send({ error: 'Vui lòng đăng nhập tài khoản để đóng quỹ dưới danh nghĩa thành viên lớp' });
     } else if (body.customName && body.customName.trim()) {
+      // Approved Guest flow
       const trimmedCustomName = body.customName.trim();
       if (trimmedCustomName.length > 100) {
         return reply.status(400).send({ error: 'Tên người đóng góp không được vượt quá 100 ký tự' });
       }
+
+      // Check for canonical member impersonation
+      const normGuest = removeVietnameseDiacritics(trimmedCustomName);
+      const canonicalMatch = db
+        .prepare('SELECT id, full_name FROM members WHERE UPPER(normalized_name) = UPPER(?)')
+        .get(normGuest) as any;
+      if (canonicalMatch) {
+        return reply.status(400).send({
+          error: `"${canonicalMatch.full_name}" là thành viên trong danh sách lớp. Vui lòng đăng nhập để đóng quỹ.`,
+        });
+      }
+
       const ext = options.memberService.createExternalContributor(trimmedCustomName);
       externalContributorId = ext.id;
       bankDisplayName = generateBankDisplayName(ext.raw_name);

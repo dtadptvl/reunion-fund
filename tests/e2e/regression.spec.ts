@@ -277,6 +277,53 @@ test.describe('H1 Routing, Deep Links, Back/Forward & Contribution Tests', () =>
     await expect(page.locator('select')).toBeHidden();
   });
 
+  test('Registration guest flow: selects "Không có tên trong danh sách" -> enters name -> opens /contribute as guest WITHOUT login -> generates VietQR with custom 600,000', async ({ page }) => {
+    await page.goto('/register');
+    await expect(page.locator('.auth-shell-card')).toBeVisible();
+
+    // 1. Click member search autocomplete input
+    const memberInput = page.locator('input[placeholder*="Gõ để tìm tên"]');
+    await memberInput.click();
+
+    // 2. Select "Không có tên trong danh sách" option
+    const guestOption = page.locator('.autocomplete-guest-option', { hasText: 'Không có tên trong danh sách' });
+    await expect(guestOption).toBeVisible();
+    await guestOption.click();
+
+    // 3. Fill guest name
+    const guestNameInput = page.locator('input[placeholder*="Nhập họ và tên"]');
+    await expect(guestNameInput).toBeVisible();
+    await guestNameInput.fill('Bác Trần Văn Quý (Khách mời)');
+
+    // 4. Click "Đóng quỹ với tư cách khách" button
+    const guestSubmitBtn = page.locator('button', { hasText: 'Đóng quỹ với tư cách khách' });
+    await expect(guestSubmitBtn).toBeVisible();
+    await guestSubmitBtn.click();
+
+    // 5. Verify navigation to /contribute in guest mode (NO login required)
+    await expect(page).toHaveURL(/.*\/contribute/);
+    await expect(page.locator('.card-title', { hasText: 'Đóng Quỹ Hoạt Động' })).toBeVisible();
+
+    // Assert NO login required prompt
+    await expect(page.locator('text=Yêu Cầu Đăng Nhập Thành Viên')).toBeHidden();
+
+    // Assert Guest banner shows entered guest name
+    await expect(page.locator('text=Đóng quỹ với tư cách khách ủng hộ')).toBeVisible();
+    await expect(page.locator('text=Bác Trần Văn Quý (Khách mời)')).toBeVisible();
+
+    // 6. Select custom amount and enter 600000
+    const customAmountField = page.locator('input[type="number"]');
+    await customAmountField.click();
+    await customAmountField.fill('600000');
+
+    // 7. Click "Tạo Mã QR Đóng Quỹ"
+    await page.locator('button', { hasText: 'Tạo Mã QR Đóng Quỹ' }).click();
+
+    // 8. Verify QR code is generated with 600.000 ₫ and payment code
+    await expect(page.locator('img[alt="VietQR Đóng Quỹ Họp Lớp"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=600.000 ₫')).toBeVisible();
+  });
+
   test('Canonical Admin identity: logs in and verifies Dương Tuấn Anh is displayed without legacy text', async ({ page }) => {
     await page.goto('/login');
     await expect(page.locator('.auth-shell-card')).toBeVisible();
