@@ -75,6 +75,8 @@ export class AuthService {
         ? passwordHash
         : await this.hashPassword('123456');
 
+    if (!this.db.open) return false;
+
     if (!existingStaff) {
       const id = crypto.randomUUID();
       this.db

@@ -30,30 +30,73 @@ export async function publicRoutes(
   const lotteryService = options.lotteryService || new LotteryService(db);
 
   // 0. Public Activities & RSVPs
-  app.get('/api/v1/public/activities', async () => {
-    return activityService.getPublicActivitySummaries();
-  });
+  app.get(
+    '/api/v1/public/activities',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
+      return activityService.getPublicActivitySummaries();
+    }
+  );
 
-  // 0.1 Public Lucky Wheel State
-  app.get('/api/v1/public/lottery/wheel-state', async () => {
-    return lotteryService.getPublicWheelState();
-  });
+  // 0.1 Public Lucky Wheel State (High Capacity for Shared NAT Event Polling)
+  app.get(
+    '/api/v1/public/lottery/wheel-state',
+    {
+      config: {
+        rateLimit: {
+          max: 3000,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
+      return lotteryService.getPublicWheelState();
+    }
+  );
 
   // 0.2 Public Background Music Streaming
-  app.get('/api/v1/public/lottery/background-music', async (request, reply) => {
-    const audio = lotteryService.getBackgroundMusicFilePath();
-    if (!audio) {
-      return reply.status(404).send({ error: 'Chưa có nhạc nền được tải lên.' });
-    }
+  app.get(
+    '/api/v1/public/lottery/background-music',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
+      const audio = lotteryService.getBackgroundMusicFilePath();
+      if (!audio) {
+        return reply.status(404).send({ error: 'Chưa có nhạc nền được tải lên.' });
+      }
 
-    const stream = fs.createReadStream(audio.filePath);
-    reply.header('Content-Type', audio.mimeType);
-    reply.header('Cache-Control', 'public, max-age=3600');
-    return reply.send(stream);
-  });
+      const stream = fs.createReadStream(audio.filePath);
+      reply.header('Content-Type', audio.mimeType);
+      reply.header('Cache-Control', 'public, max-age=3600');
+      return reply.send(stream);
+    }
+  );
 
   // 1. Overview Financial Totals & Recent Activity
-  app.get('/api/v1/public/overview', async () => {
+  app.get(
+    '/api/v1/public/overview',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
     const incomeRow = db
       .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM contributions')
       .get() as { total: number };
@@ -139,31 +182,63 @@ export async function publicRoutes(
   });
 
   // 1.1 Public Global Configuration
-  app.get('/api/v1/public/config', async () => {
-    const suggestedRow = db
-      .prepare("SELECT value FROM system_state WHERE key = 'suggested_contribution_amount'")
-      .get() as { value: string } | undefined;
-    const suggestedAmount = suggestedRow ? parseInt(suggestedRow.value, 10) : 500000;
-    const rawSuggested = isNaN(suggestedAmount) || suggestedAmount <= 0 ? 500000 : suggestedAmount;
-    const targetAmount = rawSuggested * 18;
+  app.get(
+    '/api/v1/public/config',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
+      const suggestedRow = db
+        .prepare("SELECT value FROM system_state WHERE key = 'suggested_contribution_amount'")
+        .get() as { value: string } | undefined;
+      const suggestedAmount = suggestedRow ? parseInt(suggestedRow.value, 10) : 500000;
+      const rawSuggested = isNaN(suggestedAmount) || suggestedAmount <= 0 ? 500000 : suggestedAmount;
+      const targetAmount = rawSuggested * 18;
 
-    return {
-      eventTitle: config.REUNION_EVENT_TITLE,
-      suggestedAmount: rawSuggested,
-      targetAmount,
-      targetMultiplier: 18,
-    };
-  });
+      return {
+        eventTitle: config.REUNION_EVENT_TITLE,
+        suggestedAmount: rawSuggested,
+        targetAmount,
+        targetMultiplier: 18,
+      };
+    }
+  );
 
   // 2. Member Roster Search
-  app.get('/api/v1/public/members', async (request) => {
-    const { q } = request.query as { q?: string };
-    const members = options.memberService.searchMembers(q || '', 100);
-    return { members };
-  });
+  app.get(
+    '/api/v1/public/members',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request) => {
+      const { q } = request.query as { q?: string };
+      const members = options.memberService.searchMembers(q || '', 100);
+      return { members };
+    }
+  );
 
   // 2.1 Public Name Correction Request
-  app.post('/api/v1/public/members/:id/correction', async (request, reply) => {
+  app.post(
+    '/api/v1/public/members/:id/correction',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { id } = request.params as { id: string };
     const { requestedName, notes } = request.body as { requestedName?: string; notes?: string };
 
@@ -191,7 +266,17 @@ export async function publicRoutes(
   });
 
   // 3. Create Payment Intent & VietQR
-  app.post('/api/v1/public/intent', async (request, reply) => {
+  app.post(
+    '/api/v1/public/intent',
+    {
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const body = request.body as {
       memberId?: string;
       customName?: string;
@@ -282,8 +367,18 @@ export async function publicRoutes(
     };
   });
 
-  // 4. Check Intent Status
-  app.get('/api/v1/public/intent/:code', async (request, reply) => {
+  // 4. Check Intent Status (High Capacity for Contributor Polling)
+  app.get(
+    '/api/v1/public/intent/:code',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { code } = request.params as { code: string };
     const intent = db
       .prepare('SELECT * FROM payment_intents WHERE payment_code = ?')
@@ -306,7 +401,17 @@ export async function publicRoutes(
   });
 
   // 5. Contributors Public List (Alphabetical with lottery probability)
-  app.get('/api/v1/public/contributors', async () => {
+  app.get(
+    '/api/v1/public/contributors',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
     // Get canonical class members with calculated lottery statistics
     const lotteryData = lotteryService.getMembersWithLotteryStats();
 
@@ -348,7 +453,17 @@ export async function publicRoutes(
   });
 
   // 6. Contributor Detail History
-  app.get('/api/v1/public/contributors/:id', async (request, reply) => {
+  app.get(
+    '/api/v1/public/contributors/:id',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const member = db.prepare('SELECT * FROM members WHERE id = ?').get(id) as any;
@@ -380,7 +495,17 @@ export async function publicRoutes(
   });
 
   // 7. Public Expenses List
-  app.get('/api/v1/public/expenses', async () => {
+  app.get(
+    '/api/v1/public/expenses',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
     const expenses = db
       .prepare(`
         SELECT
@@ -429,7 +554,17 @@ export async function publicRoutes(
   });
 
   // 7.1 Public Settlement Summary & Financial Totals
-  app.get('/api/v1/public/settlement', async () => {
+  app.get(
+    '/api/v1/public/settlement',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => {
     const totalInRow = db
       .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM contributions')
       .get() as { total: number };
@@ -478,14 +613,34 @@ export async function publicRoutes(
   });
 
   // 8. Public Exports
-  app.get('/api/v1/public/export/xlsx', async (_req, reply) => {
+  app.get(
+    '/api/v1/public/export/xlsx',
+    {
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (_req, reply) => {
     const buffer = options.exportService.generatePublicXLSX();
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     reply.header('Content-Disposition', 'attachment; filename="bao_cao_quy_reunion.xlsx"');
     return reply.send(buffer);
   });
 
-  app.get('/api/v1/public/export/csv/:type', async (request, reply) => {
+  app.get(
+    '/api/v1/public/export/csv/:type',
+    {
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { type } = request.params as { type: 'contributions' | 'expenses' };
     if (type !== 'contributions' && type !== 'expenses') {
       return reply.status(400).send({ error: 'Loại export không hợp lệ' });
@@ -497,7 +652,17 @@ export async function publicRoutes(
   });
 
   // 9. Public Expense Attachments List
-  app.get('/api/v1/public/expenses/:id/attachments', async (request) => {
+  app.get(
+    '/api/v1/public/expenses/:id/attachments',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request) => {
     const { id } = request.params as { id: string };
     const attachments = options.attachmentService.getAttachmentsForExpense(id);
     return {
@@ -513,7 +678,17 @@ export async function publicRoutes(
   });
 
   // 10. Public Attachment Safe Download / View
-  app.get('/api/v1/public/attachments/:id', async (request, reply) => {
+  app.get(
+    '/api/v1/public/attachments/:id',
+    {
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { id } = request.params as { id: string };
     const attachment = options.attachmentService.getAttachmentById(id);
     if (!attachment) {

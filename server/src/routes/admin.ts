@@ -67,7 +67,17 @@ export async function adminRoutes(
   };
 
   // 1. Admin / Staff Login
-  app.post('/api/v1/admin/login', async (request, reply) => {
+  app.post(
+    '/api/v1/admin/login',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const ip = request.ip || '127.0.0.1';
     const now = Date.now();
     const loginRecord = failedLoginAttempts.get(ip);
@@ -676,7 +686,18 @@ export async function adminRoutes(
   });
 
   // 14. Admin Trigger Lucky Wheel Draw
-  app.post('/api/v1/admin/lottery/draw', { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post(
+    '/api/v1/admin/lottery/draw',
+    {
+      preHandler: [requireAdmin],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const user = (request as any).user;
     const body = request.body as { prizeId?: string };
 
@@ -696,7 +717,18 @@ export async function adminRoutes(
   });
 
   // 15. Admin Official Lottery Reset
-  app.post('/api/v1/admin/lottery/reset', { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post(
+    '/api/v1/admin/lottery/reset',
+    {
+      preHandler: [requireAdmin],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const user = (request as any).user;
     try {
       lotteryService.resetLotteryState(user.username);

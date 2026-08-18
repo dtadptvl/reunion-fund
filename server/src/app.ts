@@ -114,7 +114,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   app.register(rateLimit, {
-    max: 1000,
+    max: 120,
     timeWindow: '1 minute',
   });
 

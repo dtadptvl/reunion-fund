@@ -26,7 +26,17 @@ export async function authRoutes(
   const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 
   // 1. Member Account Registration
-  app.post('/api/v1/auth/register', async (request, reply) => {
+  app.post(
+    '/api/v1/auth/register',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const body = request.body as {
       memberId?: string;
       username?: string;
@@ -84,7 +94,17 @@ export async function authRoutes(
   });
 
   // 2. Email Verification (POST with code or token)
-  app.post('/api/v1/auth/verify-email', async (request, reply) => {
+  app.post(
+    '/api/v1/auth/verify-email',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const body = request.body as {
       token?: string;
       code?: string;
@@ -127,7 +147,17 @@ export async function authRoutes(
   });
 
   // 2.1 Email Verification via Direct Link (GET)
-  app.get('/api/v1/auth/verify-email', async (request, reply) => {
+  app.get(
+    '/api/v1/auth/verify-email',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { token } = request.query as { token?: string };
 
     if (!token) {
@@ -199,7 +229,17 @@ export async function authRoutes(
   });
 
   // 3. Resend Email Verification Code
-  app.post('/api/v1/auth/resend-verification', async (request, reply) => {
+  app.post(
+    '/api/v1/auth/resend-verification',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const { identifier } = request.body as { identifier?: string };
 
     if (!identifier || !identifier.trim()) {
@@ -216,7 +256,17 @@ export async function authRoutes(
   });
 
   // 4. Unified Login (Member & Admin)
-  app.post('/api/v1/auth/login', async (request, reply) => {
+  app.post(
+    '/api/v1/auth/login',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const ip = request.ip || '127.0.0.1';
     const now = Date.now();
     const loginRecord = failedLoginAttempts.get(ip);
@@ -310,7 +360,17 @@ export async function authRoutes(
   });
 
   // 5. Logout
-  app.post('/api/v1/auth/logout', async (request, reply) => {
+  app.post(
+    '/api/v1/auth/logout',
+    {
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const sessionToken = (request.cookies as any)?.session_token;
     if (sessionToken) {
       authService.destroySession(sessionToken);
@@ -320,7 +380,17 @@ export async function authRoutes(
   });
 
   // 6. Current User & Profile
-  app.get('/api/v1/auth/me', async (request, reply) => {
+  app.get(
+    '/api/v1/auth/me',
+    {
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const sessionToken = (request.cookies as any)?.session_token;
     const session = authService.validateSession(sessionToken);
 
@@ -369,7 +439,17 @@ export async function authRoutes(
   });
 
   // 7. Get Current Member Activity RSVPs
-  app.get('/api/v1/auth/rsvps', async (request, reply) => {
+  app.get(
+    '/api/v1/auth/rsvps',
+    {
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const sessionToken = (request.cookies as any)?.session_token;
     const session = authService.validateSession(sessionToken);
 
@@ -393,7 +473,17 @@ export async function authRoutes(
   });
 
   // 8. Update Current Member Activity RSVPs
-  app.post('/api/v1/auth/rsvps', async (request, reply) => {
+  app.post(
+    '/api/v1/auth/rsvps',
+    {
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
     const sessionToken = (request.cookies as any)?.session_token;
     const session = authService.validateSession(sessionToken);
 

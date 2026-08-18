@@ -15,9 +15,13 @@ export async function webhookRoutes(
     expenseService: ExpenseService;
   }
 ) {
-  // SePay Webhook Endpoint
   app.post(
     '/api/v1/webhook/sepay',
+    {
+      config: {
+        rateLimit: false,
+      },
+    },
     async (request, reply) => {
       const rawBody =
         (request as any).rawBody ??
