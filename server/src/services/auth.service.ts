@@ -60,67 +60,54 @@ export class AuthService {
   async seedInitialStaff(username: string, passwordHash?: string, fullName = 'Dương Tuấn Anh'): Promise<boolean> {
     if (!this.db.open) return false;
 
-    const seedAccount = async (u: string, pHash?: string, fName = 'Dương Tuấn Anh') => {
-      if (!this.db.open) return;
-      const tuanAnh = this.db
-        .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
-        .get() as { id: string; full_name: string } | undefined;
+    // Find Dương Tuấn Anh in canonical members table
+    const tuanAnh = this.db
+      .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
+      .get() as { id: string; full_name: string } | undefined;
 
-      const finalFullName = tuanAnh ? tuanAnh.full_name : fName;
-      const finalMemberId = tuanAnh ? tuanAnh.id : null;
+    const finalFullName = tuanAnh ? tuanAnh.full_name : fullName;
+    const finalMemberId = tuanAnh ? tuanAnh.id : null;
 
-      const existingStaff = this.db.prepare('SELECT id FROM staff_users WHERE username = ?').get(u);
-      const finalHash =
-        pHash && !pHash.includes('dummy')
-          ? pHash
-          : await this.hashPassword('123456');
+    const finalHash =
+      passwordHash && !passwordHash.includes('dummy')
+        ? passwordHash
+        : await this.hashPassword('123456');
 
-      if (!this.db.open) return;
+    if (!this.db.open) return false;
 
-      if (!existingStaff) {
-        const id = crypto.randomUUID();
-        this.db
-          .prepare(`
-            INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
-            VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
-          `)
-          .run(id, u, finalHash, finalFullName);
-      } else {
-        this.db
-          .prepare(`
-            UPDATE staff_users SET password_hash = ?, full_name = ? WHERE username = ?
-          `)
-          .run(finalHash, finalFullName, u);
-      }
+    const id = crypto.randomUUID();
+    this.db
+      .prepare(`
+        INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
+        VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
+        ON CONFLICT(username) DO UPDATE SET
+          password_hash = excluded.password_hash,
+          full_name = excluded.full_name,
+          role = 'ADMIN'
+      `)
+      .run(id, username, finalHash, finalFullName);
 
-      if (finalMemberId) {
-        this.db
-          .prepare('UPDATE users SET member_id = NULL, role = \'MEMBER\' WHERE member_id = ? AND username != ?')
-          .run(finalMemberId, u);
-      }
-
-      const existingUser = this.db.prepare('SELECT id FROM users WHERE username = ?').get(u) as { id: string } | undefined;
-      if (!existingUser) {
-        const id = crypto.randomUUID();
-        this.db
-          .prepare(`
-            INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `)
-          .run(id, finalMemberId, u, `${u}@reunion.local`, finalHash, finalFullName);
-      } else {
-        this.db
-          .prepare(`
-            UPDATE users SET member_id = ?, password_hash = ?, full_name = ?, role = 'ADMIN', status = 'ACTIVE', email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE username = ?
-          `)
-          .run(finalMemberId, finalHash, finalFullName, u);
-      }
-    };
-
-    await seedAccount(username, passwordHash, fullName);
-    if (username !== 'admin') {
-      await seedAccount('admin', undefined, 'Dương Tuấn Anh');
+    if (finalMemberId) {
+      this.db
+        .prepare('UPDATE users SET member_id = NULL, role = \'MEMBER\' WHERE member_id = ? AND username != ?')
+        .run(finalMemberId, username);
     }
+
+    const userId = crypto.randomUUID();
+    this.db
+      .prepare(`
+        INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(username) DO UPDATE SET
+          member_id = excluded.member_id,
+          password_hash = excluded.password_hash,
+          full_name = excluded.full_name,
+          role = 'ADMIN',
+          status = 'ACTIVE',
+          email_verified = 1,
+          updated_at = CURRENT_TIMESTAMP
+      `)
+      .run(userId, finalMemberId, username, `${username}@reunion.local`, finalHash, finalFullName);
 
     this.seedDefaultAdmins();
     return true;
@@ -130,16 +117,16 @@ export class AuthService {
     if (!this.db.open) return;
 
     // Clean up any legacy Treasurer display names in staff_users and users
-    this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%' OR username = 'admin'").run();
-    this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%'").run();
+    this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%' OR username IN ('admin', 'thuquy')").run();
+    this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%' OR username IN ('admin', 'thuquy')").run();
 
     const adminMemberIds: string[] = [];
 
     for (const adminName of DEFAULT_ADMIN_NAMES) {
       const normalized = removeVietnameseDiacritics(adminName);
       const members = this.db
-        .prepare('SELECT id, full_name FROM members WHERE normalized_name = ?')
-        .all(normalized) as MemberRow[];
+        .prepare('SELECT id, full_name FROM members WHERE full_name = ? OR UPPER(normalized_name) = UPPER(?)')
+        .all(adminName, normalized) as MemberRow[];
 
       for (const m of members) {
         adminMemberIds.push(m.id);
