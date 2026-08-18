@@ -47,46 +47,36 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
 
   const loadData = async () => {
     try {
-      const pubRes = await fetch('/api/v1/public/activities');
-      const pubJson = await pubRes.json();
-      setPublicData(pubJson);
+      const [pubRes, userRes] = await Promise.all([
+        fetch('/api/v1/public/activities'),
+        currentUser ? fetch('/api/v1/auth/rsvps') : Promise.resolve(null),
+      ]);
 
-      // If user is logged in, fetch their own current RSVPs
-      if (currentUser) {
-        const userRes = await fetch('/api/v1/auth/rsvps');
-        if (userRes.ok) {
-          const userJson = await userRes.json();
-          const rsvpMap: Record<string, { selected: boolean; count: number }> = {};
+      const pubJson = pubRes.ok ? await pubRes.json() : null;
+      if (pubJson) {
+        setPublicData(pubJson);
+      }
 
-          // Initialize with default false & count 1 for all activities
-          if (pubJson.activities) {
-            pubJson.activities.forEach((act: ActivitySummary) => {
-              rsvpMap[act.id] = { selected: false, count: 1 };
-            });
-          }
+      const rsvpMap: Record<string, { selected: boolean; count: number }> = {};
+      if (pubJson?.activities) {
+        pubJson.activities.forEach((act: ActivitySummary) => {
+          rsvpMap[act.id] = { selected: false, count: 1 };
+        });
+      }
 
-          // Populate with user's saved RSVPs
-          if (userJson.rsvps && Array.isArray(userJson.rsvps)) {
-            userJson.rsvps.forEach((r: any) => {
-              rsvpMap[r.activity_id] = {
-                selected: true,
-                count: r.participant_count || 1,
-              };
-            });
-          }
-
-          setSelectedRsvps(rsvpMap);
-        }
-      } else {
-        // Not logged in, initialize default map
-        if (pubJson.activities) {
-          const rsvpMap: Record<string, { selected: boolean; count: number }> = {};
-          pubJson.activities.forEach((act: ActivitySummary) => {
-            rsvpMap[act.id] = { selected: false, count: 1 };
+      if (userRes && userRes.ok) {
+        const userJson = await userRes.json();
+        if (userJson.rsvps && Array.isArray(userJson.rsvps)) {
+          userJson.rsvps.forEach((r: any) => {
+            rsvpMap[r.activity_id] = {
+              selected: true,
+              count: r.participant_count || 1,
+            };
           });
-          setSelectedRsvps(rsvpMap);
         }
       }
+
+      setSelectedRsvps(rsvpMap);
     } catch (err) {
       console.error('Lỗi khi tải danh sách hoạt động:', err);
     } finally {

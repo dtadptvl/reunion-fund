@@ -157,6 +157,14 @@ button, input, select, textarea {
   .navbar-inner {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+  }
+  .brand-logo {
+    flex-shrink: 0;
+    min-width: max-content;
+  }
+  .brand-text-group {
+    min-width: max-content;
   }
 }
 
@@ -207,26 +215,37 @@ button, input, select, textarea {
 .desktop-nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-wrap: nowrap;
   flex-shrink: 0;
 }
 
 .nav-link {
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--text-muted);
-  padding: 8px 10px;
+  padding: 5px 6px;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
   background: none;
   border: none;
   cursor: pointer;
-  min-height: 40px;
+  min-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+}
+
+@media (min-width: 1440px) {
+  .desktop-nav-links {
+    gap: 6px;
+  }
+  .nav-link {
+    font-size: 0.88rem;
+    padding: 8px 10px;
+    min-height: 38px;
+  }
 }
 
 .nav-link:hover, .nav-link.active {
@@ -247,8 +266,13 @@ button, input, select, textarea {
 .desktop-auth-buttons {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: 6px;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.desktop-auth-buttons .btn-sm {
+  padding: 4px 8px;
+  font-size: 0.78rem;
 }
 
 /* Hamburger Toggle Button for Mobile */
@@ -1364,7 +1388,7 @@ button, input, select, textarea {
     display: none !important;
   }
   .navbar-toggle {
-    display: flex !important;
+    display: grid !important;
   }
 }
 

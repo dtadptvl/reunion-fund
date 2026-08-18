@@ -299,6 +299,8 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               placeholder="VD: nguyenhoa12"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              spellCheck={false}
               required
             />
             <div className="form-hint">Tối thiểu 3 ký tự, dùng để đăng nhập hệ thống.</div>
@@ -315,6 +317,8 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               placeholder="VD: yourname@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              spellCheck={false}
               required
             />
             <div className="form-hint">Mã xác thực tài khoản 6 số sẽ được gửi tới email này.</div>
@@ -331,6 +335,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               placeholder="Tối thiểu 6 ký tự"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
               required
             />
           </div>
@@ -346,6 +351,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               placeholder="Nhập lại mật khẩu"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
               required
             />
           </div>

@@ -91,6 +91,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
+            spellCheck={false}
           />
         </div>
 
