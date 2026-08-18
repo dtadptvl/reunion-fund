@@ -428,24 +428,8 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
 
   return (
     <div
-      className={isPresentationMode ? 'presentation-active' : ''}
+      className={`lucky-wheel-page-root ${isPresentationMode ? 'presentation-active' : ''}`}
       style={{
-        ...(isPresentationMode
-          ? {
-              position: 'fixed',
-              inset: 0,
-              zIndex: 1000,
-              width: '100vw',
-              height: '100vh',
-              overflow: 'hidden',
-              padding: '12px 20px',
-              boxSizing: 'border-box',
-            }
-          : {
-              minHeight: '100vh',
-              padding: '20px 16px 40px',
-              boxSizing: 'border-box',
-            }),
         background: 'linear-gradient(135deg, #070a12 0%, #0f172a 50%, #1e1b4b 100%)',
         color: '#ffffff',
         display: 'flex',
@@ -995,20 +979,22 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
 
           {/* 3. Completed Prizes / Hall of Fame (Compact 3 Cards in 1 Row) */}
           <div
+            className="lucky-wheel-results-box"
             style={{
               background: 'rgba(15, 23, 42, 0.75)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '12px',
-              padding: '10px 14px',
+              padding: '12px 14px',
               boxSizing: 'border-box',
               width: '100%',
+              marginBottom: '16px',
             }}
           >
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>
               🏆 KẾT QUẢ CÁC HẠNG MỤC
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', boxSizing: 'border-box' }}>
+            <div className="lucky-wheel-results-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', boxSizing: 'border-box' }}>
               {/* Prize 1: Giải Ba */}
               {(() => {
                 const draw = (wheelState?.completedPrizes || []).find((p) => p.prizeId === 'giai-ba');
@@ -1016,17 +1002,19 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                   <div
                     style={{
                       background: draw ? 'rgba(202, 138, 4, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                      border: `1px solid ${draw ? '#ca8a04' : 'rgba(255, 255, 255, 0.08)'}`,
+                      border: `1.5px solid ${draw ? '#ca8a04' : 'rgba(255, 255, 255, 0.12)'}`,
                       borderRadius: '8px',
-                      padding: '8px',
+                      padding: '8px 6px',
                       textAlign: 'center',
                       boxSizing: 'border-box',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
                     }}
                   >
                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fef08a' }}>🥉 GIẢI BA</div>
                     {draw ? (
                       <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                           {draw.winnerName}
                         </div>
                         {draw.winnerDisambiguator && (
@@ -1047,17 +1035,19 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                   <div
                     style={{
                       background: draw ? 'rgba(148, 163, 184, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                      border: `1px solid ${draw ? '#94a3b8' : 'rgba(255, 255, 255, 0.08)'}`,
+                      border: `1.5px solid ${draw ? '#94a3b8' : 'rgba(255, 255, 255, 0.12)'}`,
                       borderRadius: '8px',
-                      padding: '8px',
+                      padding: '8px 6px',
                       textAlign: 'center',
                       boxSizing: 'border-box',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
                     }}
                   >
                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#e2e8f0' }}>🥈 GIẢI NHÌ</div>
                     {draw ? (
                       <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                           {draw.winnerName}
                         </div>
                         {draw.winnerDisambiguator && (
@@ -1078,17 +1068,19 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                   <div
                     style={{
                       background: draw ? 'rgba(234, 179, 8, 0.25)' : 'rgba(255, 255, 255, 0.03)',
-                      border: `1px solid ${draw ? '#facc15' : 'rgba(255, 255, 255, 0.08)'}`,
+                      border: `1.5px solid ${draw ? '#facc15' : 'rgba(255, 255, 255, 0.12)'}`,
                       borderRadius: '8px',
-                      padding: '8px',
+                      padding: '8px 6px',
                       textAlign: 'center',
                       boxSizing: 'border-box',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
                     }}
                   >
                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fbbf24' }}>🥇 GIẢI NHẤT</div>
                     {draw ? (
                       <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginTop: '2px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                           {draw.winnerName}
                         </div>
                         {draw.winnerDisambiguator && (

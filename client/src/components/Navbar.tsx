@@ -26,23 +26,20 @@ export const Navbar: React.FC<NavbarProps> = ({
     setMobileMenuOpen(false);
   };
 
-  const navItems = [
+  // Authoritative Navigation Order & Vietnamese Labels
+  const primaryNavItems = [
     { id: 'home', label: 'Trang chủ' },
-    { id: 'activities', label: 'Kế hoạch & Hoạt động' },
-    { id: 'lucky-wheel', label: '🎡 Quay số may mắn' },
-    { id: 'contribute', label: 'Đóng quỹ' },
-    { id: 'contributors', label: 'Đóng góp' },
-    { id: 'expenses', label: 'Chi tiêu' },
+    { id: 'activities', label: 'Kế hoạch và hoạt động' },
+    { id: 'contribute', label: 'Đóng quỹ hoạt động' },
+    { id: 'contributors', label: 'Danh sách đóng góp' },
+    { id: 'expenses', label: 'Danh sách chi tiêu' },
+    { id: 'lucky-wheel', label: 'Quay số may mắn' },
     { id: 'settlement', label: 'Quyết toán' },
   ];
 
-  if (currentUser && currentUser.role === 'ADMIN') {
-    navItems.push({ id: 'admin', label: 'Quản trị' });
-  }
-
   return (
     <header className="navbar">
-      {/* DESKTOP PERSONALIZED BAR (Visible only on desktop >= 768px when logged in) */}
+      {/* DESKTOP PERSONALIZED BAR (Visible on wide screens >= 1150px when logged in) */}
       {currentUser && (
         <div className="desktop-member-bar">
           <div className="desktop-member-bar-content">
@@ -77,16 +74,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           }}
           className="brand-logo"
         >
-          <span className="brand-icon">🎓</span>
+          <span className="brand-icon" aria-hidden="true">🎓</span>
           <div className="brand-text-group">
             <span className="brand-main-title">Lớp A1 — Khóa 48</span>
             <span className="brand-sub-title">2013–2016 • THPT Văn Lâm</span>
           </div>
         </a>
 
-        {/* DESKTOP NAVIGATION LINKS */}
+        {/* DESKTOP NAVIGATION LINKS (Visible on wide screens >= 1150px) */}
         <nav className="desktop-nav-links" aria-label="Menu chính">
-          {navItems.map((item) => (
+          {primaryNavItems.map((item) => (
             <button
               key={item.id}
               className={`nav-link ${currentTab === item.id ? 'active' : ''} ${item.id === 'lucky-wheel' ? 'nav-link-wheel' : ''}`}
@@ -95,6 +92,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               {item.label}
             </button>
           ))}
+
+          {/* ADMIN ONLY BUTTON */}
+          {currentUser && currentUser.role === 'ADMIN' && (
+            <button
+              className={`nav-link ${currentTab === 'admin' ? 'active' : ''}`}
+              onClick={() => handleNavClick('admin')}
+              style={{ fontWeight: 700, color: 'var(--primary)' }}
+            >
+              Quản trị
+            </button>
+          )}
 
           {/* Desktop Auth Controls */}
           {currentUser ? (
@@ -119,7 +127,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </nav>
 
-        {/* MOBILE HAMBURGER TOGGLE BUTTON */}
+        {/* MOBILE / RESPONSIVE HAMBURGER TOGGLE BUTTON */}
         <button
           className={`navbar-toggle ${mobileMenuOpen ? 'open' : ''}`}
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -135,40 +143,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* MOBILE DROPDOWN / DRAWER */}
       {mobileMenuOpen && (
         <div className="mobile-nav-drawer" role="dialog" aria-modal="true">
-          {/* Logged in member status card on mobile */}
-          {currentUser && (
-            <div className="mobile-member-card">
-              <div className="mobile-member-header">
-                <span className="mobile-member-avatar">👤</span>
-                <div className="mobile-member-info">
-                  <div className="mobile-member-name">
-                    {currentUser.fullName}
-                    {currentUser.role === 'ADMIN' && <span className="admin-badge">Admin</span>}
-                  </div>
-                  <div className="mobile-member-username">@{currentUser.username}</div>
-                </div>
-              </div>
-
-              <div className="mobile-member-metrics">
-                <div className="mobile-metric-box">
-                  <div className="mobile-metric-label">Đã đóng</div>
-                  <div className="mobile-metric-value text-primary">
-                    {formatVND(currentUser.totalContributed || 0)}
-                  </div>
-                </div>
-                <div className="mobile-metric-box">
-                  <div className="mobile-metric-label">Tỷ lệ quay thưởng</div>
-                  <div className="mobile-metric-value text-success">
-                    {currentUser.lotteryProbabilityDisplay || '0%'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Navigation Links list */}
+          {/* 1. Primary Navigation List (Order matches Section 2 exactly) */}
           <nav className="mobile-nav-list">
-            {navItems.map((item) => (
+            {primaryNavItems.map((item) => (
               <button
                 key={item.id}
                 className={`mobile-nav-item ${currentTab === item.id ? 'active' : ''} ${item.id === 'lucky-wheel' ? 'wheel-highlight' : ''}`}
@@ -180,29 +157,72 @@ export const Navbar: React.FC<NavbarProps> = ({
             ))}
           </nav>
 
-          {/* Mobile Auth Actions */}
-          <div className="mobile-auth-actions">
-            {currentUser ? (
+          {/* 2. Admin Control (ADMIN only) */}
+          {currentUser && currentUser.role === 'ADMIN' && (
+            <div className="mobile-admin-section">
+              <button
+                className={`mobile-nav-item admin-highlight ${currentTab === 'admin' ? 'active' : ''}`}
+                onClick={() => handleNavClick('admin')}
+              >
+                <span>⚙️ Quản trị hệ thống</span>
+                <span className="mobile-nav-arrow">›</span>
+              </button>
+            </div>
+          )}
+
+          <div className="mobile-nav-divider" />
+
+          {/* 3. Separated User/Account Area */}
+          {currentUser ? (
+            <div className="mobile-account-area">
+              <div className="mobile-member-card">
+                <div className="mobile-member-header">
+                  <span className="mobile-member-avatar">👤</span>
+                  <div className="mobile-member-info">
+                    <div className="mobile-member-name">
+                      {currentUser.fullName}
+                      {currentUser.role === 'ADMIN' && <span className="admin-badge">Admin</span>}
+                    </div>
+                    <div className="mobile-member-username">@{currentUser.username}</div>
+                  </div>
+                </div>
+
+                <div className="mobile-member-metrics">
+                  <div className="mobile-metric-box">
+                    <div className="mobile-metric-label">Đã đóng</div>
+                    <div className="mobile-metric-value text-primary">
+                      {formatVND(currentUser.totalContributed || 0)}
+                    </div>
+                  </div>
+                  <div className="mobile-metric-box">
+                    <div className="mobile-metric-label">Tỷ lệ quay thưởng</div>
+                    <div className="mobile-metric-value text-success">
+                      {currentUser.lotteryProbabilityDisplay || '0%'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <button className="btn btn-danger btn-block" onClick={handleLogoutClick}>
                 🚪 Đăng xuất
               </button>
-            ) : (
-              <div className="mobile-auth-guest-grid">
-                <button
-                  className="btn btn-outline btn-block"
-                  onClick={() => handleNavClick('register')}
-                >
-                  Đăng ký tài khoản
-                </button>
-                <button
-                  className="btn btn-primary btn-block"
-                  onClick={() => handleNavClick('login')}
-                >
-                  Đăng nhập
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="mobile-auth-guest-grid">
+              <button
+                className="btn btn-outline btn-block"
+                onClick={() => handleNavClick('register')}
+              >
+                Đăng ký tài khoản
+              </button>
+              <button
+                className="btn btn-primary btn-block"
+                onClick={() => handleNavClick('login')}
+              >
+                Đăng nhập
+              </button>
+            </div>
+          )}
         </div>
       )}
     </header>

@@ -140,39 +140,53 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .brand-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   text-decoration: none;
   color: var(--primary);
   min-height: 44px;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
 }
 
 .brand-icon {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
+  flex-shrink: 0;
 }
 
 .brand-text-group {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brand-main-title {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.15rem;
+  font-size: clamp(0.95rem, 4vw, 1.15rem);
   line-height: 1.2;
   color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .brand-sub-title {
-  font-size: 0.75rem;
+  font-size: clamp(0.68rem, 2.8vw, 0.75rem);
   color: var(--text-muted);
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Desktop Nav Links */
@@ -180,14 +194,15 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-link {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-muted);
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
   background: none;
@@ -197,6 +212,7 @@ button, input, select, textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .nav-link:hover, .nav-link.active {
@@ -217,8 +233,8 @@ button, input, select, textarea {
 .desktop-auth-buttons {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: 8px;
+  gap: 6px;
+  margin-left: 6px;
 }
 
 /* Hamburger Toggle Button for Mobile */
@@ -227,14 +243,19 @@ button, input, select, textarea {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 8px;
+  padding: 10px;
   min-width: 44px;
   min-height: 44px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
   color: var(--text-main);
   touch-action: manipulation;
+  box-sizing: border-box;
+  margin: 0;
 }
 
 .navbar-toggle:focus-visible {
@@ -398,6 +419,28 @@ button, input, select, textarea {
 .mobile-nav-arrow {
   color: var(--text-muted);
   font-size: 1.2rem;
+}
+
+.mobile-nav-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 12px 0;
+}
+
+.mobile-admin-section {
+  margin-top: 4px;
+}
+
+.mobile-nav-item.admin-highlight {
+  color: var(--primary);
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.mobile-account-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .mobile-auth-actions {
@@ -1275,6 +1318,16 @@ button, input, select, textarea {
 /* ========================================================================= */
 /* LUCKY WHEEL RESPONSIVE STYLING                                            */
 /* ========================================================================= */
+.lucky-wheel-page-root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .lucky-wheel-layout-grid {
   width: 100%;
   max-width: 1560px;
@@ -1288,10 +1341,23 @@ button, input, select, textarea {
   box-sizing: border-box;
 }
 
+/* Presentation Mode on Desktop Landscape: Fixed 100vw x 100vh 16:9 projection */
+@media (min-width: 901px) and (orientation: landscape) {
+  .lucky-wheel-page-root.presentation-active {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1000 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    padding: 12px 20px !important;
+  }
+}
+
 /* ========================================================================= */
 /* RESPONSIVE BREAKPOINT RULES (MOBILE-FIRST)                                */
 /* ========================================================================= */
-@media (max-width: 768px) {
+@media (max-width: 1150px) {
   .desktop-member-bar {
     display: none !important;
   }
@@ -1301,6 +1367,9 @@ button, input, select, textarea {
   .navbar-toggle {
     display: flex !important;
   }
+}
+
+@media (max-width: 768px) {
   .responsive-table-desktop {
     display: none !important;
   }
@@ -1333,15 +1402,27 @@ button, input, select, textarea {
 }
 
 @media (max-width: 900px), (orientation: portrait) and (max-width: 1024px) {
+  .lucky-wheel-page-root,
+  .lucky-wheel-page-root.presentation-active {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 14px 12px calc(64px + env(safe-area-inset-bottom, 24px)) 12px !important;
+    z-index: 1 !important;
+  }
+
   .lucky-wheel-layout-grid {
     display: flex !important;
     flex-direction: column !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    overflow: visible !important;
     gap: 16px !important;
     height: auto !important;
     max-height: none !important;
-    padding-bottom: 30px !important;
+    padding-bottom: 24px !important;
   }
   .lucky-wheel-left-col {
     max-height: none !important;
@@ -1353,7 +1434,6 @@ button, input, select, textarea {
     height: auto !important;
     width: 100% !important;
     overflow: visible !important;
-    max-height: none !important;
   }
   .lucky-wheel-canvas-box {
     max-width: min(85vw, 360px) !important;
@@ -1361,6 +1441,10 @@ button, input, select, textarea {
   .lucky-wheel-legend-grid {
     grid-template-columns: 1fr !important;
     max-height: 280px !important;
+  }
+  .lucky-wheel-results-box {
+    margin-bottom: 24px !important;
+    padding: 12px 10px !important;
   }
   .desktop-only {
     display: none !important;
@@ -1390,3 +1474,4 @@ button, input, select, textarea {
     display: none !important;
   }
 }
+
