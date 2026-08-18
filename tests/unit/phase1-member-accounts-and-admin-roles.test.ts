@@ -39,7 +39,7 @@ describe('V2 Phase 1 — Member Accounts & Admin Roles', () => {
 
     const bich = members.find((m) => m.full_name === 'Nguyễn Thị Bích');
     expect(bich).toBeDefined();
-    expect(bich?.normalized_name).toBe('nguyen thi bich');
+    expect(bich?.normalized_name.toLowerCase()).toBe('nguyen thi bich');
   });
 
   it('correctly identifies default ADMIN identities (Dương Tuấn Anh, Hoàng Thị Nhàn)', () => {

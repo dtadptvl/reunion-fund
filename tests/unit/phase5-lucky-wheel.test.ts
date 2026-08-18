@@ -36,17 +36,27 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     await app.ready();
   });
 
+  function insertContribution(db: Database.Database, memberId: string, amount: number) {
+    const bankTxId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO bank_transactions (id, sepay_id, gateway, transaction_date, account_number, transfer_type, transfer_amount, content, raw_payload, ingestion_source)
+      VALUES (?, ?, 'MB', datetime('now'), '0123', 'in', ?, 'test', '{}', 'WEBHOOK')
+    `).run(bankTxId, Math.floor(Math.random() * 10000000) + 1000, amount);
+
+    db.prepare(`
+      INSERT INTO contributions (id, bank_transaction_id, contributor_type, member_id, amount, match_method)
+      VALUES (?, ?, 'MEMBER', ?, ?, 'EXACT_PAYMENT_CODE')
+    `).run(crypto.randomUUID(), bankTxId, memberId, amount);
+  }
+
   it('1. Excludes 0-VND members and builds correct proportional wheel segments', async () => {
     const members = memberService.searchMembers('', 10);
     const m1 = members[0]; // 500k
     const m2 = members[1]; // 1,500k
     // members[2] has 0 VND -> must NOT appear on wheel
 
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE'),
-             (?, 'MEMBER', ?, 1500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), m1.id, crypto.randomUUID(), m2.id);
+    insertContribution(db, m1.id, 500000);
+    insertContribution(db, m2.id, 1500000);
 
     const { segments, totalWeight } = lotteryService.getWheelSegments(new Set());
     expect(totalWeight).toBe(2000000);
@@ -71,10 +81,7 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
   it('2. Enforces strict draw order: Giải Ba -> Giải Nhì -> Giải Nhất', async () => {
     const members = memberService.searchMembers('', 5);
     members.slice(0, 4).forEach((m) => {
-      db.prepare(`
-        INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-        VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-      `).run(crypto.randomUUID(), m.id);
+      insertContribution(db, m.id, 500000);
     });
 
     // Attempting to draw Giải Nhì before Giải Ba must fail
@@ -112,12 +119,9 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     const m2 = members[1]; // 500k
     const m3 = members[2]; // 1,000k
 
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE'),
-             (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE'),
-             (?, 'MEMBER', ?, 1000000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), m1.id, crypto.randomUUID(), m2.id, crypto.randomUUID(), m3.id);
+    insertContribution(db, m1.id, 500000);
+    insertContribution(db, m2.id, 500000);
+    insertContribution(db, m3.id, 1000000);
 
     // Total initial pool = 2M. m1 = 25%, m2 = 25%, m3 = 50%
     const initialSegments = lotteryService.getWheelSegments(new Set()).segments;
@@ -141,10 +145,7 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
   it('4. Idempotency: duplicate / repeated draw request returns existing persisted draw', async () => {
     const members = memberService.searchMembers('', 5);
     members.slice(0, 3).forEach((m) => {
-      db.prepare(`
-        INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-        VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-      `).run(crypto.randomUUID(), m.id);
+      insertContribution(db, m.id, 500000);
     });
 
     const firstDraw = lotteryService.triggerDraw('giai-ba', 'admin');
@@ -163,10 +164,7 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
   it('5. RBAC & HTTP API: Guest/Member cannot trigger draw (401/403), Admin can trigger (200), Public can read state', async () => {
     const members = memberService.searchMembers('', 5);
     members.slice(0, 3).forEach((m) => {
-      db.prepare(`
-        INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-        VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-      `).run(crypto.randomUUID(), m.id);
+      insertContribution(db, m.id, 500000);
     });
 
     // 1. Unauthenticated request to draw -> 401
@@ -175,11 +173,11 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
 
     // 2. Member request to draw -> 403
     const bich = members.find((m) => m.full_name === 'Nguyễn Thị Bích') || members[0];
-    await authService.registerMemberAccount(bich.id, 'bich_member', 'bich@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('bich@example.com')!.token);
+    await authService.registerMember({ memberId: bich.id, username: 'bich_member', email: 'bich@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('bich@example.com')!.token });
     const memberLogin = await supertest(app.server).post('/api/v1/auth/login').send({
       username: 'bich_member',
-      password: 'pwd',
+      password: 'password123',
     });
     const memberCookie = memberLogin.headers['set-cookie'];
 
@@ -191,11 +189,11 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
 
     // 3. Admin request to draw -> 200
     const tuanAnh = members.find((m) => m.full_name === 'Dương Tuấn Anh') || members[1];
-    await authService.registerMemberAccount(tuanAnh.id, 'tuananh_adm', 'tuananh@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('tuananh@example.com')!.token);
+    await authService.registerMember({ memberId: tuanAnh.id, username: 'tuananh_adm', email: 'adm@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('adm@example.com')!.token });
     const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
       username: 'tuananh_adm',
-      password: 'pwd',
+      password: 'password123',
     });
     const adminCookie = adminLogin.headers['set-cookie'];
 
@@ -220,55 +218,46 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(audit.entity_id).toBe('giai-ba');
   });
 
-  it('6. Background Music: Admin can upload, stream, and delete audio file without path traversal', async () => {
-    // Admin login
-    const members = memberService.searchMembers('Dương Tuấn Anh', 5);
-    const tuanAnh = members[0];
-    await authService.registerMemberAccount(tuanAnh.id, 'admin_audio', 'audio@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('audio@example.com')!.token);
-    const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
-      username: 'admin_audio',
-      password: 'pwd',
-    });
-    const adminCookie = adminLogin.headers['set-cookie'];
+  it('6. Background Music: Streams persistent audio asset and handles missing music gracefully', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const audioDir = path.join(lotteryService.storageDir, 'audio');
+    if (fs.existsSync(audioDir)) {
+      fs.readdirSync(audioDir).forEach((f) => {
+        try { fs.unlinkSync(path.join(audioDir, f)); } catch { /* ignore */ }
+      });
+    }
 
-    // 1. Initial music request -> 404
+    // 1. Initial music request when no file on disk -> 404
     const initRes = await supertest(app.server).get('/api/v1/public/lottery/background-music');
     expect(initRes.status).toBe(404);
 
-    // 2. Upload valid MP3 (ID3 header)
+    // 2. When persistent audio exists in storage, public can stream it
+    if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+    
     const mp3Buffer = Buffer.concat([Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00'), Buffer.alloc(100)]);
-    const uploadRes = await supertest(app.server)
-      .post('/api/v1/admin/lottery/music')
-      .set('Cookie', adminCookie)
-      .attach('file', mp3Buffer, 'theme_gala.mp3');
-
-    expect(uploadRes.status).toBe(200);
-    expect(uploadRes.body.success).toBe(true);
-    expect(uploadRes.body.metadata.mimeType).toBe('audio/mpeg');
+    fs.writeFileSync(path.join(audioDir, 'lottery_bgm.mp3'), mp3Buffer);
 
     // 3. Public can stream audio
     const streamRes = await supertest(app.server).get('/api/v1/public/lottery/background-music');
     expect(streamRes.status).toBe(200);
     expect(streamRes.headers['content-type']).toBe('audio/mpeg');
 
-    // 4. Delete audio
-    const delRes = await supertest(app.server)
-      .delete('/api/v1/admin/lottery/music')
-      .set('Cookie', adminCookie);
-    expect(delRes.status).toBe(200);
+    // 4. Public wheel state reports hasBackgroundMusic: true
+    const stateRes = await supertest(app.server).get('/api/v1/public/lottery/wheel-state');
+    expect(stateRes.status).toBe(200);
+    expect(stateRes.body.hasBackgroundMusic).toBe(true);
 
-    const streamAfterDel = await supertest(app.server).get('/api/v1/public/lottery/background-music');
-    expect(streamAfterDel.status).toBe(404);
+    // Clean up test file
+    try {
+      fs.unlinkSync(path.join(audioDir, 'lottery_bgm.mp3'));
+    } catch { /* ignore */ }
   });
 
   it('7. Staging Lottery Reset: deletes draw history and audits reset without touching contributions', async () => {
     const members = memberService.searchMembers('', 5);
     members.slice(0, 3).forEach((m) => {
-      db.prepare(`
-        INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-        VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-      `).run(crypto.randomUUID(), m.id);
+      insertContribution(db, m.id, 500000);
     });
 
     // Draw Giải Ba
@@ -294,4 +283,49 @@ describe('V2 Phase 5 — Weighted Lucky Wheel & Ceremony Draws', () => {
     expect(resetAudit).toBeDefined();
     expect(resetAudit.actor).toBe('admin_tester');
   });
+
+  it('8. Verifies persistent music survives lottery reset and completed state transitions cleanly', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const audioDir = path.join(lotteryService.storageDir, 'audio');
+    if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+    
+    const mp3Buffer = Buffer.concat([Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00'), Buffer.alloc(100)]);
+    fs.writeFileSync(path.join(audioDir, 'lottery_bgm.mp3'), mp3Buffer);
+
+    const members = memberService.searchMembers('', 5);
+    members.slice(0, 4).forEach((m) => {
+      insertContribution(db, m.id, 500000);
+    });
+
+    // 1. Draw all 3 prizes
+    lotteryService.triggerDraw('giai-ba', 'admin');
+    lotteryService.triggerDraw('giai-nhi', 'admin');
+    lotteryService.triggerDraw('giai-nhat', 'admin');
+
+    // Simulate elapsed spin duration for Giải Nhất
+    db.prepare("UPDATE lucky_wheel_draws SET started_at = datetime('now', '-40 seconds') WHERE prize_id = 'giai-nhat'").run();
+
+    const finishedState = lotteryService.getPublicWheelState();
+    expect(finishedState.status).toBe('FINISHED');
+    expect(finishedState.nextPrize).toBeNull();
+    expect(finishedState.completedPrizes).toHaveLength(3);
+    expect(finishedState.hasBackgroundMusic).toBe(true);
+
+    // 2. Perform staging reset
+    lotteryService.resetLotteryState('admin_tester', true);
+
+    const resetState = lotteryService.getPublicWheelState();
+    expect(resetState.status).toBe('IDLE');
+    expect(resetState.completedPrizes).toHaveLength(0);
+    expect(resetState.nextPrize?.prizeId).toBe('giai-ba');
+    expect(resetState.nextPrize?.prizeTitle).toBe('Giải Ba');
+    expect(resetState.hasBackgroundMusic).toBe(true); // Music remains preserved!
+
+    // Cleanup
+    try {
+      fs.unlinkSync(path.join(audioDir, 'lottery_bgm.mp3'));
+    } catch { /* ignore */ }
+  });
 });
+

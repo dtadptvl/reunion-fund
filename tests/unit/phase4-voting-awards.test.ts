@@ -36,6 +36,19 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     await app.ready();
   });
 
+  function insertContribution(db: Database.Database, memberId: string, amount: number) {
+    const bankTxId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO bank_transactions (id, sepay_id, gateway, transaction_date, account_number, transfer_type, transfer_amount, content, raw_payload, ingestion_source)
+      VALUES (?, ?, 'MB', datetime('now'), '0123', 'in', ?, 'test', '{}', 'WEBHOOK')
+    `).run(bankTxId, Math.floor(Math.random() * 10000000) + 1000, amount);
+
+    db.prepare(`
+      INSERT INTO contributions (id, bank_transaction_id, contributor_type, member_id, amount, match_method)
+      VALUES (?, ?, 'MEMBER', ?, ?, 'EXACT_PAYMENT_CODE')
+    `).run(crypto.randomUUID(), bankTxId, memberId, amount);
+  }
+
   it('1. verifies canonical 3 categories are seeded in correct display order', () => {
     const categories = votingService.getCategories();
     expect(categories).toHaveLength(3);
@@ -56,20 +69,21 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     const candidateB = members[2];
 
     // Register & verify voter account
-    await authService.registerMemberAccount(voter.id, 'voter1', 'voter1@example.com', 'password123');
+    await authService.registerMember({ memberId: voter.id, username: 'voter1', email: 'voter1@example.com', password: 'password123' });
     const token = mockEmailProvider.getLatestEmailFor('voter1@example.com')!.token;
-    await authService.verifyEmailToken(token);
-    const user = (await authService.authenticate('voter1', 'password123')).user!;
+    await authService.verifyEmail({ token });
+    const authRes = await authService.authenticate('voter1', 'password123');
+    const user = authRes.session!;
 
     // Cast vote for dang-quy-nhat -> candidateA
     votingService.castVotes(
-      user.id,
+      user.userId,
       voter.id,
       [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }],
       'voter1'
     );
 
-    let userVotes = votingService.getUserVotes(user.id);
+    let userVotes = votingService.getUserVotes(user.userId);
     expect(userVotes['dang-quy-nhat']).toBe(candidateA.id);
 
     // Total rows in votes table for dang-quy-nhat must be 1
@@ -78,13 +92,13 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
 
     // Change vote for dang-quy-nhat -> candidateB
     votingService.castVotes(
-      user.id,
+      user.userId,
       voter.id,
       [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateB.id }],
       'voter1'
     );
 
-    userVotes = votingService.getUserVotes(user.id);
+    userVotes = votingService.getUserVotes(user.userId);
     expect(userVotes['dang-quy-nhat']).toBe(candidateB.id);
 
     // Total rows in votes table for dang-quy-nhat must STILL be 1 (no duplicates)
@@ -97,10 +111,11 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     const voter = members[0];
     const candidateA = members[1];
 
-    await authService.registerMemberAccount(voter.id, 'voter2', 'voter2@example.com', 'password123');
+    await authService.registerMember({ memberId: voter.id, username: 'voter2', email: 'voter2@example.com', password: 'password123' });
     const token = mockEmailProvider.getLatestEmailFor('voter2@example.com')!.token;
-    await authService.verifyEmailToken(token);
-    const user = (await authService.authenticate('voter2', 'password123')).user!;
+    await authService.verifyEmail({ token });
+    const authRes = await authService.authenticate('voter2', 'password123');
+    const user = authRes.session!;
 
     // Lock voting
     votingService.setVotingLock(true, 'admin_user');
@@ -109,7 +124,7 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     // Attempt to vote while locked -> throws error
     expect(() => {
       votingService.castVotes(
-        user.id,
+        user.userId,
         voter.id,
         [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }],
         'voter2'
@@ -122,7 +137,7 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
 
     // Now voting succeeds
     const res = votingService.castVotes(
-      user.id,
+      user.userId,
       voter.id,
       [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }],
       'voter2'
@@ -138,19 +153,17 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     const candidateWithContrib = members[2]; // 500k contribution
 
     // Add contribution for candidateWithContrib only
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), candidateWithContrib.id);
+    insertContribution(db, candidateWithContrib.id, 500000);
 
     // Voter casts vote for candidateNoContrib
-    await authService.registerMemberAccount(voter.id, 'voter3', 'voter3@example.com', 'password123');
+    await authService.registerMember({ memberId: voter.id, username: 'voter3', email: 'voter3@example.com', password: 'password123' });
     const token = mockEmailProvider.getLatestEmailFor('voter3@example.com')!.token;
-    await authService.verifyEmailToken(token);
-    const user = (await authService.authenticate('voter3', 'password123')).user!;
+    await authService.verifyEmail({ token });
+    const authRes = await authService.authenticate('voter3', 'password123');
+    const user = authRes.session!;
 
     votingService.castVotes(
-      user.id,
+      user.userId,
       voter.id,
       [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateNoContrib.id }],
       'voter3'
@@ -173,37 +186,33 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     const members = memberService.searchMembers('', 10);
     const voter1 = members[0];
     const voter2 = members[1];
-    const voter3 = members[2];
 
     const candidateA = members[3]; // 500k contribution
     const candidateB = members[4]; // 1,000,000 contribution
 
     // Add contributions
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE'),
-             (?, 'MEMBER', ?, 1000000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), candidateA.id, crypto.randomUUID(), candidateB.id);
+    insertContribution(db, candidateA.id, 500000);
+    insertContribution(db, candidateB.id, 1000000);
 
     // Create 2 voters
-    await authService.registerMemberAccount(voter1.id, 'v1', 'v1@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('v1@example.com')!.token);
-    const u1 = (await authService.authenticate('v1', 'pwd')).user!;
+    await authService.registerMember({ memberId: voter1.id, username: 'voter_u1', email: 'v1@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('v1@example.com')!.token });
+    const u1 = (await authService.authenticate('voter_u1', 'password123')).session!;
 
-    await authService.registerMemberAccount(voter2.id, 'v2', 'v2@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('v2@example.com')!.token);
-    const u2 = (await authService.authenticate('v2', 'pwd')).user!;
+    await authService.registerMember({ memberId: voter2.id, username: 'voter_u2', email: 'v2@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('v2@example.com')!.token });
+    const u2 = (await authService.authenticate('voter_u2', 'password123')).session!;
 
     // Case 1: Higher vote count wins (u1 and u2 vote for candidateA -> candidateA has 2 votes vs candidateB 0 votes)
-    votingService.castVotes(u1.id, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'v1');
-    votingService.castVotes(u2.id, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'v2');
+    votingService.castVotes(u1.userId, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'voter_u1');
+    votingService.castVotes(u2.userId, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'voter_u2');
 
     let results = votingService.getAdminResults();
     let cat = results.categories.find((c) => c.id === 'dang-quy-nhat')!;
     expect(cat.winner?.member_id).toBe(candidateA.id);
 
     // Case 2: Tie in votes (1 vote each) -> Candidate with higher contribution wins (candidateB has 1M > candidateA 500k)
-    votingService.castVotes(u2.id, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateB.id }], 'v2');
+    votingService.castVotes(u2.userId, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateB.id }], 'voter_u2');
 
     results = votingService.getAdminResults();
     cat = results.categories.find((c) => c.id === 'dang-quy-nhat')!;
@@ -219,23 +228,20 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     const candidateB = members[4]; // 500k contribution
 
     // Add equal contributions
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE'),
-             (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), candidateA.id, crypto.randomUUID(), candidateB.id);
+    insertContribution(db, candidateA.id, 500000);
+    insertContribution(db, candidateB.id, 500000);
 
     // Create 2 voters
-    await authService.registerMemberAccount(voter1.id, 't1', 't1@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('t1@example.com')!.token);
-    const u1 = (await authService.authenticate('t1', 'pwd')).user!;
+    await authService.registerMember({ memberId: voter1.id, username: 'test_t1', email: 't1@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('t1@example.com')!.token });
+    const u1 = (await authService.authenticate('test_t1', 'password123')).session!;
 
-    await authService.registerMemberAccount(voter2.id, 't2', 't2@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('t2@example.com')!.token);
-    const u2 = (await authService.authenticate('t2', 'pwd')).user!;
+    await authService.registerMember({ memberId: voter2.id, username: 'test_t2', email: 't2@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('t2@example.com')!.token });
+    const u2 = (await authService.authenticate('test_t2', 'password123')).session!;
 
-    votingService.castVotes(u1.id, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 't1');
-    votingService.castVotes(u2.id, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateB.id }], 't2');
+    votingService.castVotes(u1.userId, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'test_t1');
+    votingService.castVotes(u2.userId, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateB.id }], 'test_t2');
 
     // Both candidates have 1 vote and 500k contribution -> exact tie!
     let results = votingService.getAdminResults();
@@ -266,11 +272,11 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
     // 2. MEMBER role request -> 403
     const members = memberService.searchMembers('Nguyễn Thị Bích', 10);
     const bich = members.find((m) => m.full_name === 'Nguyễn Thị Bích')!;
-    await authService.registerMemberAccount(bich.id, 'bich_voter', 'bich_voter@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('bich_voter@example.com')!.token);
+    await authService.registerMember({ memberId: bich.id, username: 'bich_voter', email: 'bich_voter@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('bich_voter@example.com')!.token });
     const memberLogin = await supertest(app.server).post('/api/v1/auth/login').send({
       username: 'bich_voter',
-      password: 'pwd',
+      password: 'password123',
     });
     const memberCookie = memberLogin.headers['set-cookie'];
 
@@ -281,11 +287,11 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
 
     // 3. ADMIN role request -> 200
     const tuanAnh = memberService.searchMembers('Dương Tuấn Anh', 10).find((m) => m.full_name === 'Dương Tuấn Anh')!;
-    await authService.registerMemberAccount(tuanAnh.id, 'tuananh_admin', 'tuananh_admin@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('tuananh_admin@example.com')!.token);
+    await authService.registerMember({ memberId: tuanAnh.id, username: 'tuananh_admin', email: 'tuananh_admin@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('tuananh_admin@example.com')!.token });
     const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
       username: 'tuananh_admin',
-      password: 'pwd',
+      password: 'password123',
     });
     const adminCookie = adminLogin.headers['set-cookie'];
 
@@ -305,37 +311,34 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
 
   it('8. Confidential Vote Counts: Guests and Members cannot read candidate counts, Presentation reveals winner voteCount', async () => {
     const members = memberService.searchMembers('', 10);
-    const voter1 = members[0];
-    const voter2 = members[1];
-    const candidateA = members[2];
+    const voter1 = members[4];
+    const voter2 = members[5];
+    const candidateA = members[6];
 
     // Add confirmed contribution so candidateA is eligible
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), candidateA.id);
+    insertContribution(db, candidateA.id, 500000);
 
     // Create 2 voters
-    await authService.registerMemberAccount(voter1.id, 'pv1', 'pv1@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('pv1@example.com')!.token);
-    const u1 = (await authService.authenticate('pv1', 'pwd')).user!;
+    await authService.registerMember({ memberId: voter1.id, username: 'pv1_voter', email: 'pv1@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('pv1@example.com')!.token });
+    const u1 = (await authService.authenticate('pv1_voter', 'password123')).session!;
 
-    await authService.registerMemberAccount(voter2.id, 'pv2', 'pv2@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('pv2@example.com')!.token);
-    const u2 = (await authService.authenticate('pv2', 'pwd')).user!;
+    await authService.registerMember({ memberId: voter2.id, username: 'pv2_voter', email: 'pv2@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('pv2@example.com')!.token });
+    const u2 = (await authService.authenticate('pv2_voter', 'password123')).session!;
 
     // 1. Guest request to public voting counts -> 404 (endpoint removed)
     const pubRes = await supertest(app.server).get('/api/v1/public/voting/counts');
     expect(pubRes.status).toBe(404);
 
     // 2. Member casts vote
-    votingService.castVotes(u1.id, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv1');
-    votingService.castVotes(u2.id, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv2');
+    votingService.castVotes(u1.userId, voter1.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv1_voter');
+    votingService.castVotes(u2.userId, voter2.id, [{ categoryId: 'dang-quy-nhat', candidateMemberId: candidateA.id }], 'pv2_voter');
 
     // 3. Member /api/v1/auth/votes response contains user's own vote, but NO candidate vote counts
     const memberLogin = await supertest(app.server).post('/api/v1/auth/login').send({
-      username: 'pv1',
-      password: 'pwd',
+      username: 'pv1_voter',
+      password: 'password123',
     });
     const memberCookie = memberLogin.headers['set-cookie'];
 
@@ -349,11 +352,11 @@ describe('V2 Phase 4 — Voting & Admin Award Presentation', () => {
 
     // 4. Admin presentation endpoint contains winner voteCount (2 votes)
     const tuanAnh = memberService.searchMembers('Dương Tuấn Anh', 10).find((m) => m.full_name === 'Dương Tuấn Anh')!;
-    await authService.registerMemberAccount(tuanAnh.id, 'admin_pres', 'admin_pres@example.com', 'pwd');
-    await authService.verifyEmailToken(mockEmailProvider.getLatestEmailFor('admin_pres@example.com')!.token);
+    await authService.registerMember({ memberId: tuanAnh.id, username: 'admin_pres', email: 'admin_pres@example.com', password: 'password123' });
+    await authService.verifyEmail({ token: mockEmailProvider.getLatestEmailFor('admin_pres@example.com')!.token });
     const adminLogin = await supertest(app.server).post('/api/v1/auth/login').send({
       username: 'admin_pres',
-      password: 'pwd',
+      password: 'password123',
     });
     const adminCookie = adminLogin.headers['set-cookie'];
 

@@ -583,6 +583,23 @@ export class LotteryService {
   // ==========================================
 
   getBackgroundMusicMetadata(): BackgroundMusicMetadata | null {
+    const audio = this.getBackgroundMusicFilePath();
+    if (audio && fs.existsSync(audio.filePath)) {
+      try {
+        const stats = fs.statSync(audio.filePath);
+        return {
+          filename: path.basename(audio.filePath),
+          originalName: 'Nhạc nền Gala Quay Thưởng',
+          mimeType: audio.mimeType,
+          sizeBytes: stats.size,
+          uploadedAt: stats.mtime.toISOString(),
+          actor: 'SYSTEM_PERSISTENT',
+        };
+      } catch {
+        // fallback
+      }
+    }
+
     const row = this.db
       .prepare("SELECT value FROM system_state WHERE key = 'lottery_background_music'")
       .get() as { value: string } | undefined;
@@ -596,15 +613,40 @@ export class LotteryService {
   }
 
   getBackgroundMusicFilePath(): { filePath: string; mimeType: string } | null {
-    const meta = this.getBackgroundMusicMetadata();
-    if (!meta) return null;
+    // 1. Check persistent shared media locations (priority)
+    const candidatePaths = [
+      process.env.SHARED_MEDIA_PATH ? path.join(process.env.SHARED_MEDIA_PATH, 'lottery_bgm.mp3') : null,
+      '/data/reunion-fund/shared/media/lottery_bgm.mp3',
+      path.join(this.storageDir, 'audio', 'lottery_bgm.mp3'),
+      path.join(this.storageDir, 'audio', 'lottery.mp3'),
+    ].filter(Boolean) as string[];
 
-    const audioDir = path.join(this.storageDir, 'audio');
-    const fullPath = path.join(audioDir, meta.filename);
-
-    if (fs.existsSync(fullPath)) {
-      return { filePath: fullPath, mimeType: meta.mimeType };
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        return { filePath: p, mimeType: 'audio/mpeg' };
+      }
     }
+
+    // 2. Check metadata-backed file in storageDir
+    const row = this.db
+      .prepare("SELECT value FROM system_state WHERE key = 'lottery_background_music'")
+      .get() as { value: string } | undefined;
+
+    if (row && row.value) {
+      try {
+        const meta = JSON.parse(row.value) as BackgroundMusicMetadata;
+        if (meta && meta.filename) {
+          const audioDir = path.join(this.storageDir, 'audio');
+          const fullPath = path.join(audioDir, meta.filename);
+          if (fs.existsSync(fullPath)) {
+            return { filePath: fullPath, mimeType: meta.mimeType || 'audio/mpeg' };
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     return null;
   }
 

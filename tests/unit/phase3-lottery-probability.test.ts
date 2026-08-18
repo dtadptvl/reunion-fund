@@ -57,6 +57,26 @@ describe('V2 Phase 3 — Personalized Contribution & Lottery Probability UI', ()
     expect(stats.eligiblePool).toBe(0);
   });
 
+  function insertContribution(db: Database.Database, memberId: string, amount: number, contributorType: 'MEMBER' | 'EXTERNAL' = 'MEMBER', externalId?: string) {
+    const bankTxId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO bank_transactions (id, sepay_id, gateway, transaction_date, account_number, transfer_type, transfer_amount, content, raw_payload, ingestion_source)
+      VALUES (?, ?, 'MB', datetime('now'), '0123', 'in', ?, 'test', '{}', 'WEBHOOK')
+    `).run(bankTxId, Math.floor(Math.random() * 10000000) + 1000, amount);
+
+    if (contributorType === 'EXTERNAL') {
+      db.prepare(`
+        INSERT INTO contributions (id, bank_transaction_id, contributor_type, external_contributor_id, amount, match_method)
+        VALUES (?, ?, 'EXTERNAL', ?, ?, 'EXACT_PAYMENT_CODE')
+      `).run(crypto.randomUUID(), bankTxId, externalId, amount);
+    } else {
+      db.prepare(`
+        INSERT INTO contributions (id, bank_transaction_id, contributor_type, member_id, amount, match_method)
+        VALUES (?, ?, 'MEMBER', ?, ?, 'EXACT_PAYMENT_CODE')
+      `).run(crypto.randomUUID(), bankTxId, memberId, amount);
+    }
+  }
+
   it('3. maps member contributions by immutable member_id, aggregates multiple transactions, and calculates probabilities summing to ~100%', () => {
     const members = memberService.searchMembers('', 100);
     const member1 = members[0]; // e.g. Tuấn Anh
@@ -64,31 +84,19 @@ describe('V2 Phase 3 — Personalized Contribution & Lottery Probability UI', ()
     const member3 = members[2];
 
     // Insert multiple contributions for member 1 (500k + 500k = 1,000,000)
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE'),
-             (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), member1.id, crypto.randomUUID(), member1.id);
+    insertContribution(db, member1.id, 500000);
+    insertContribution(db, member1.id, 500000);
 
     // Insert 1 contribution for member 2 (2,000,000)
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 2000000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), member2.id);
+    insertContribution(db, member2.id, 2000000);
 
     // Insert 1 contribution for member 3 (1,000,000)
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 1000000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), member3.id);
+    insertContribution(db, member3.id, 1000000);
 
     // Also insert an external contributor contribution (500k) - must NOT be in eligible member pool
     const extId = crypto.randomUUID();
-    db.prepare("INSERT INTO external_contributors (id, raw_name, display_name) VALUES (?, 'Nguoi Ngoai', 'Người Ngoài')").run(extId);
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, external_contributor_id, amount, match_method)
-      VALUES (?, 'EXTERNAL', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), extId);
+    db.prepare("INSERT INTO external_contributors (id, raw_name, display_name, normalized_name) VALUES (?, 'Nguoi Ngoai', 'Người Ngoài', 'NGUOI NGOAI')").run(extId);
+    insertContribution(db, '', 500000, 'EXTERNAL', extId);
 
     // Total member eligible pool = 1M + 2M + 1M = 4,000,000
     const pool = lotteryService.getEligibleMemberPool();
@@ -130,10 +138,7 @@ describe('V2 Phase 3 — Personalized Contribution & Lottery Probability UI', ()
     const bich = members.find((m) => m.full_name === 'Nguyễn Thị Bích')!;
 
     // Add confirmed contribution for Bich (500k)
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), bich.id);
+    insertContribution(db, bich.id, 500000);
 
     const res = await supertest(app.server).get('/api/v1/public/contributors');
     expect(res.status).toBe(200);
@@ -164,10 +169,7 @@ describe('V2 Phase 3 — Personalized Contribution & Lottery Probability UI', ()
     expect(unauthRes.body.user).toBeNull();
 
     // 2. Add contribution for Bich (500k)
-    db.prepare(`
-      INSERT INTO contributions (id, contributor_type, member_id, amount, match_method)
-      VALUES (?, 'MEMBER', ?, 500000, 'EXACT_PAYMENT_CODE')
-    `).run(crypto.randomUUID(), bich.id);
+    insertContribution(db, bich.id, 500000);
 
     // 3. Register & verify Bich account
     await supertest(app.server).post('/api/v1/auth/register').send({
