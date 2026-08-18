@@ -740,7 +740,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
           maxWidth: '1560px',
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: isPresentationMode ? '55% 45%' : 'minmax(0, 1.2fr) minmax(0, 1fr)',
+          gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)',
           gap: '16px',
           alignItems: 'center',
           overflow: 'hidden',
@@ -761,6 +761,8 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             height: '100%',
             maxHeight: 'calc(100vh - 80px)',
             boxSizing: 'border-box',
+            minWidth: 0,
+            width: '100%',
           }}
         >
           {/* Top Golden Arrow Pointer */}
@@ -822,10 +824,11 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
             justifyContent: 'space-between',
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: '4px 8px 4px 4px',
+            padding: '4px 6px',
             boxSizing: 'border-box',
             width: '100%',
             maxWidth: '100%',
+            minWidth: 0,
           }}
         >
           {/* 1. Winner Reveal Celebration Banner (Box-Sizing Safe, Full Visible Borders on All 4 Sides) */}
@@ -842,7 +845,7 @@ export const LuckyWheelPage: React.FC<LuckyWheelPageProps> = ({ currentUser }) =
                 boxSizing: 'border-box',
                 width: '100%',
                 maxWidth: '100%',
-                margin: '0 0 6px 0',
+                margin: '0',
                 overflow: 'hidden',
                 wordBreak: 'break-word',
                 overflowWrap: 'break-word',
