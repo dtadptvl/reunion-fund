@@ -175,10 +175,6 @@ export class AuthService {
             .run(tuanAnh.id, tuanAnh.full_name, unlinkedBootstrap.id);
         }
       }
-
-      this.db
-        .prepare("UPDATE staff_users SET member_id = ? WHERE (username = 'admin' OR username = 'thuquy') AND member_id IS NULL")
-        .run(tuanAnh.id);
     }
 
     const adminMemberIds: string[] = [];
@@ -520,15 +516,13 @@ export class AuthService {
         const m = this.db.prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?').get(staff.member_id) as MemberRow | undefined;
         if (m) {
           staffFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
-          staffRole = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
+          const userAccount = this.db.prepare('SELECT id FROM users WHERE member_id = ?').get(m.id);
+          if (!userAccount && isDefaultAdminMember(m.full_name)) {
+            staffRole = 'ADMIN';
+          } else {
+            staffRole = 'MEMBER';
+          }
           staffMemberId = m.id;
-        }
-      } else {
-        const tuanAnh = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as MemberRow | undefined;
-        if (tuanAnh) {
-          staffFullName = tuanAnh.full_name;
-          staffRole = 'ADMIN';
-          staffMemberId = tuanAnh.id;
         }
       }
 

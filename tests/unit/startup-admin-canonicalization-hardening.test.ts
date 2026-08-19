@@ -324,4 +324,41 @@ describe('H1.1 Startup Admin Canonicalization Hardening', () => {
     expect(s5.full_name).toBe('Bác Quỹ Trưởng');
     expect(u2.full_name).toBe('Trần Văn Quỹ (Khách mời)');
   });
+
+  // 11. Dirty state: staff_users legacy credential cannot authenticate as an additional Admin when real account exists
+  it('dirty state: staff_users legacy credential cannot authenticate as an additional Admin when real Dương Tuấn Anh account exists', async () => {
+    const tuanAnh = db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+
+    // 1. Real account linked to Dương Tuấn Anh in users
+    const hashReal = await authService.hashPassword('RealTuanAnhPass123!');
+    db.prepare(`
+      INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified)
+      VALUES ('u-real-tuananh', ?, 'tuananh_real', 'tuananh@example.com', ?, 'Dương Tuấn Anh', 'ADMIN', 'ACTIVE', 1)
+    `).run(tuanAnh.id, hashReal);
+
+    // 2. Separate legacy staff_users row with its own password
+    const hashLegacyStaff = await authService.hashPassword('OldStaffSecret999!');
+    db.prepare(`
+      INSERT INTO staff_users (id, username, password_hash, full_name, role, member_id)
+      VALUES ('s-legacy-thuquy', 'thuquy', ?, 'Thủ Quỹ Lớp', 'TREASURER', NULL)
+    `).run(hashLegacyStaff);
+
+    // Re-run seedDefaultAdmins
+    authService.seedDefaultAdmins();
+
+    // Authenticate with legacy staff_users credentials
+    const staffAuth = await authService.authenticate('thuquy', 'OldStaffSecret999!');
+    expect(staffAuth.status).toBe('SUCCESS');
+    // Must NOT receive ADMIN role or steal Dương Tuấn Anh's identity
+    expect(staffAuth.session?.role).toBe('MEMBER');
+    expect(staffAuth.session?.memberId).toBeNull();
+    expect(staffAuth.session?.fullName).toBe('Thủ Quỹ Lớp');
+
+    // Real account authenticates as ADMIN
+    const realAuth = await authService.authenticate('tuananh_real', 'RealTuanAnhPass123!');
+    expect(realAuth.status).toBe('SUCCESS');
+    expect(realAuth.session?.role).toBe('ADMIN');
+    expect(realAuth.session?.fullName).toBe('Dương Tuấn Anh');
+    expect(realAuth.session?.memberId).toBe(tuanAnh.id);
+  });
 });

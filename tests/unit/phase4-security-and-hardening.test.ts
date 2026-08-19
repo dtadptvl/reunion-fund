@@ -6,6 +6,7 @@ import { MockBankSyncProvider } from '../../server/src/providers/bank-sync/mock-
 import { MockAIProvider } from '../../server/src/providers/ai/mock-ai-provider.js';
 import { ExpenseService } from '../../server/src/services/expense.service.js';
 import { AuthService } from '../../server/src/services/auth.service.js';
+import { MemberService } from '../../server/src/services/member.service.js';
 import { BankTransactionRow } from '../../server/src/db/schema.js';
 
 describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', () => {
@@ -15,8 +16,12 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
   beforeEach(async () => {
     db = new Database(':memory:');
     runMigrations(db);
+    new MemberService(db).seedCanonicalRoster();
+    const authService = new AuthService(db);
+    await authService.seedInitialStaff('admin', undefined, 'Dương Tuấn Anh');
     app = buildApp({
       db,
+      authService,
       bankSyncProvider: new MockBankSyncProvider(),
       aiProvider: new MockAIProvider(),
     });
@@ -181,18 +186,11 @@ describe('Phase 4: Security Hardening, Data Minimization & Readability Fixes', (
 
   // 6. Fix 5B: ASSIGN_CONTRIBUTION audit includes member disambiguator in memberName
   it('Fix 5B: records member disambiguator in ASSIGN_CONTRIBUTION audit log', async () => {
-    // 1. Create staff login session
-    const authService = new AuthService(db);
-    const hash = await authService.hashPassword('123456');
-    db.prepare(`
-      INSERT OR REPLACE INTO staff_users (id, username, password_hash, full_name, role)
-      VALUES ('u1', 'admin_phase4', ?, 'Thủ Quỹ Test', 'TREASURER')
-    `).run(hash);
-
+    // 1. Admin login session (seeded during beforeEach)
     const login = await app.inject({
       method: 'POST',
       url: '/api/v1/admin/login',
-      payload: { username: 'admin_phase4', password: '123456' },
+      payload: { username: 'admin', password: '123456' },
     });
     expect(login.statusCode).toBe(200);
     const cookieHeader = login.headers['set-cookie'] as string;
