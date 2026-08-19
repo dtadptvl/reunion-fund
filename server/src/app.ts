@@ -97,7 +97,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     expenseService
   );
   const authService = options.authService || new AuthService(db, emailProvider);
-  authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
+  if (!options.authService) {
+    authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
+  }
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
   const attachmentService = new AttachmentService(db, config.STORAGE_PATH);

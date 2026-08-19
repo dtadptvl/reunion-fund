@@ -5,6 +5,7 @@ import { runMigrations } from '../../server/src/db/connection.js';
 import { MockBankSyncProvider } from '../../server/src/providers/bank-sync/mock-provider.js';
 import { MockAIProvider } from '../../server/src/providers/ai/mock-ai-provider.js';
 import { AuthService } from '../../server/src/services/auth.service.js';
+import { MemberService } from '../../server/src/services/member.service.js';
 import { ReconciliationService } from '../../server/src/services/reconciliation.service.js';
 
 describe('Phase 4: Mobile & Treasurer Undo/Review Tests', () => {
@@ -38,11 +39,9 @@ describe('Phase 4: Mobile & Treasurer Undo/Review Tests', () => {
 
     // Create staff session
     const authService = new AuthService(db);
+    new MemberService(db).seedCanonicalRoster();
     const hash = await authService.hashPassword('12a1@2016');
-    db.prepare(`
-      INSERT INTO staff_users (id, username, password_hash, full_name, role)
-      VALUES ('u-treasurer', 'admin88', ?, 'Thủ Quỹ Lớp A1', 'TREASURER')
-    `).run(hash);
+    await authService.seedInitialStaff('admin88', hash);
 
     bankSyncProvider = new MockBankSyncProvider();
     app = buildApp({

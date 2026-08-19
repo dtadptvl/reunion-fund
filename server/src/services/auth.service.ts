@@ -58,7 +58,7 @@ export class AuthService {
   }
 
   async seedInitialStaff(username: string, passwordHash?: string, fullName = 'Dương Tuấn Anh'): Promise<boolean> {
-    if (!this.db.open) return false;
+    if (!this.db || !this.db.open) return false;
 
     // Find Dương Tuấn Anh in canonical members table
     const tuanAnh = this.db
@@ -68,68 +68,118 @@ export class AuthService {
     const finalFullName = tuanAnh ? tuanAnh.full_name : fullName;
     const finalMemberId = tuanAnh ? tuanAnh.id : null;
 
-    const finalHash =
-      passwordHash && !passwordHash.includes('dummy')
-        ? passwordHash
-        : await this.hashPassword('123456');
+    // 1. Check if user account with this username already exists
+    const existingUser = this.db
+      .prepare('SELECT id, password_hash, member_id, role FROM users WHERE username = ?')
+      .get(username) as UserRow | undefined;
 
-    if (!this.db.open) return false;
-
-    const id = crypto.randomUUID();
-    this.db
-      .prepare(`
-        INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
-        VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
-        ON CONFLICT(username) DO UPDATE SET
-          password_hash = excluded.password_hash,
-          full_name = excluded.full_name,
-          role = 'ADMIN'
-      `)
-      .run(id, username, finalHash, finalFullName);
-
-    if (finalMemberId) {
-      this.db
-        .prepare('UPDATE users SET member_id = NULL, role = \'MEMBER\' WHERE member_id = ? AND username != ?')
-        .run(finalMemberId, username);
+    if (existingUser) {
+      // Account already exists: PRESERVE password_hash. Do NOT overwrite on restart.
+      // If member_id linkage is missing and Dương Tuấn Anh is not claimed by another user, link it.
+      if (!existingUser.member_id && finalMemberId) {
+        const otherUser = this.db
+          .prepare('SELECT id FROM users WHERE member_id = ? AND id != ?')
+          .get(finalMemberId, existingUser.id);
+        if (!otherUser) {
+          this.db
+            .prepare("UPDATE users SET member_id = ?, role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .run(finalMemberId, finalFullName, existingUser.id);
+        }
+      }
+      this.seedDefaultAdmins();
+      return true;
     }
+
+    // 2. If username doesn't exist, check if an account is already linked to Dương Tuấn Anh's member_id
+    if (finalMemberId) {
+      const existingMemberAccount = this.db
+        .prepare('SELECT id, role FROM users WHERE member_id = ?')
+        .get(finalMemberId) as UserRow | undefined;
+      if (existingMemberAccount) {
+        if (existingMemberAccount.role !== 'ADMIN') {
+          this.db
+            .prepare("UPDATE users SET role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .run(finalFullName, existingMemberAccount.id);
+        }
+        this.seedDefaultAdmins();
+        return true;
+      }
+    }
+
+    // 3. New bootstrap account creation:
+    const isDummyOrMissing = !passwordHash || passwordHash.includes('dummy');
+    let finalHash: string;
+
+    if (isDummyOrMissing) {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn(
+          '[AuthService] Insecure bootstrap skipped: ADMIN_PASSWORD_HASH is not configured or dummy in production mode.'
+        );
+        this.seedDefaultAdmins();
+        return false;
+      }
+      // Allowed in test and development modes only
+      finalHash = await this.hashPassword('123456');
+    } else {
+      finalHash = passwordHash;
+    }
+
+    if (!this.db || !this.db.open) return false;
 
     const userId = crypto.randomUUID();
     this.db
       .prepare(`
         INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'ADMIN', 'ACTIVE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT(username) DO UPDATE SET
-          member_id = excluded.member_id,
-          password_hash = excluded.password_hash,
-          full_name = excluded.full_name,
-          role = 'ADMIN',
-          status = 'ACTIVE',
-          email_verified = 1,
-          updated_at = CURRENT_TIMESTAMP
       `)
       .run(userId, finalMemberId, username, `${username}@reunion.local`, finalHash, finalFullName);
+
+    // Also populate legacy staff_users for backward compatibility if not present
+    const existingStaff = this.db
+      .prepare('SELECT id FROM staff_users WHERE username = ?')
+      .get(username);
+    if (!existingStaff) {
+      this.db
+        .prepare(`
+          INSERT INTO staff_users (id, username, password_hash, full_name, role, created_at)
+          VALUES (?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP)
+        `)
+        .run(userId, username, finalHash, finalFullName);
+    }
 
     this.seedDefaultAdmins();
     return true;
   }
 
   seedDefaultAdmins(): void {
-    if (!this.db.open) return;
+    if (!this.db || !this.db.open) return;
 
-    // Clean up any legacy Treasurer display names in staff_users and users
-    this.db.prepare("UPDATE staff_users SET full_name = 'Dương Tuấn Anh', role = 'ADMIN' WHERE full_name LIKE '%Thủ Quỹ%'").run();
-    this.db.prepare("UPDATE users SET full_name = 'Dương Tuấn Anh' WHERE full_name LIKE '%Thủ Quỹ%'").run();
+    // 1. If bootstrap admin user ('admin' or 'thuquy') exists without member_id, and Dương Tuấn Anh is not claimed, link it
+    const tuanAnh = this.db
+      .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
+      .get() as MemberRow | undefined;
 
-    const tuanAnh = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as MemberRow | undefined;
     if (tuanAnh) {
-      const existingUser = this.db.prepare('SELECT username FROM users WHERE member_id = ?').get(tuanAnh.id) as { username: string } | undefined;
-      if (!existingUser || existingUser.username === 'admin') {
-        this.db.prepare("UPDATE users SET member_id = ?, role = 'ADMIN', full_name = ? WHERE username = 'admin'").run(tuanAnh.id, tuanAnh.full_name);
+      const existingUser = this.db
+        .prepare('SELECT id, username FROM users WHERE member_id = ?')
+        .get(tuanAnh.id) as { id: string; username: string } | undefined;
+
+      if (!existingUser) {
+        const unlinkedBootstrap = this.db
+          .prepare("SELECT id FROM users WHERE (username = 'admin' OR username = 'thuquy') AND member_id IS NULL")
+          .get() as { id: string } | undefined;
+
+        if (unlinkedBootstrap) {
+          this.db
+            .prepare("UPDATE users SET member_id = ?, role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .run(tuanAnh.id, tuanAnh.full_name, unlinkedBootstrap.id);
+        }
       }
     }
 
     const adminMemberIds: string[] = [];
 
+    // 2. Ensure accounts linked to default admin members (Dương Tuấn Anh, Hoàng Thị Nhàn) have role 'ADMIN'
     for (const adminName of DEFAULT_ADMIN_NAMES) {
       const normalized = removeVietnameseDiacritics(adminName);
       const members = this.db
@@ -138,19 +188,22 @@ export class AuthService {
 
       for (const m of members) {
         adminMemberIds.push(m.id);
-        // Upgrade accounts linked to this member to ADMIN role and sync canonical name
         this.db
-          .prepare("UPDATE users SET role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE member_id = ?")
-          .run(m.full_name, m.id);
+          .prepare("UPDATE users SET role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE member_id = ? AND (role != 'ADMIN' OR full_name != ?)")
+          .run(m.full_name, m.id, m.full_name);
       }
     }
 
-    // Downgrade any non-default-admin or unlinked user accounts to MEMBER role (preserving username 'admin')
+    // 3. Ensure any unlinked user accounts or accounts linked to OTHER canonical members have role 'MEMBER'
     if (adminMemberIds.length > 0) {
       const placeholders = adminMemberIds.map(() => '?').join(',');
       this.db
-        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE (member_id IS NULL AND username != 'admin') OR (member_id IS NOT NULL AND member_id NOT IN (${placeholders}))`)
+        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE (member_id IS NULL AND role != 'MEMBER') OR (member_id IS NOT NULL AND member_id NOT IN (${placeholders}) AND role != 'MEMBER')`)
         .run(...adminMemberIds);
+    } else {
+      this.db
+        .prepare("UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE role != 'MEMBER'")
+        .run();
     }
   }
 
@@ -423,15 +476,12 @@ export class AuthService {
       }
 
       let canonicalFullName = user.full_name;
+      let canonicalRole: UserRole = 'MEMBER';
       if (user.member_id) {
-        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(user.member_id) as any;
+        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(user.member_id) as MemberRow | undefined;
         if (m) {
           canonicalFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
-        }
-      } else if (user.role === 'ADMIN') {
-        const defaultAdmin = this.db.prepare("SELECT full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
-        if (defaultAdmin) {
-          canonicalFullName = defaultAdmin.full_name;
+          canonicalRole = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
         }
       }
 
@@ -441,7 +491,7 @@ export class AuthService {
           userId: user.id,
           username: user.username,
           fullName: canonicalFullName,
-          role: user.role,
+          role: canonicalRole,
           memberId: user.member_id,
           email: user.email,
         },
@@ -459,30 +509,15 @@ export class AuthService {
         return { status: 'INVALID_CREDENTIALS', error: 'Tên đăng nhập hoặc mật khẩu không chính xác' };
       }
 
-      let staffFullName = 'Dương Tuấn Anh';
-      let staffMemberId: string | null = null;
-      if (staff.member_id) {
-        const m = this.db.prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?').get(staff.member_id) as any;
-        if (m) {
-          staffFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
-          staffMemberId = m.id;
-        }
-      } else {
-        const defaultAdmin = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
-        if (defaultAdmin) {
-          staffFullName = defaultAdmin.full_name;
-          staffMemberId = defaultAdmin.id;
-        }
-      }
-
+      // Legacy staff_users rows are strictly non-admin MEMBER access and cannot claim canonical admin memberId
       return {
         status: 'SUCCESS',
         session: {
           userId: staff.id,
           username: staff.username,
-          fullName: staffFullName,
-          role: 'ADMIN',
-          memberId: staffMemberId,
+          fullName: staff.full_name,
+          role: 'MEMBER',
+          memberId: null,
           email: null,
         },
       };
@@ -509,15 +544,52 @@ export class AuthService {
     }
 
     if (this.db && this.db.open) {
-      if (session.data.memberId) {
-        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(session.data.memberId) as any;
-        if (m) {
-          session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+      // 1. Look up authoritative user record in users table by session.data.userId
+      const user = this.db
+        .prepare('SELECT id, member_id, role, full_name, status, email_verified FROM users WHERE id = ?')
+        .get(session.data.userId) as UserRow | undefined;
+
+      if (user) {
+        // Locked or unverified users cannot hold active valid sessions
+        if (user.status === 'LOCKED' || user.email_verified === 0) {
+          this.sessions.delete(token);
+          return null;
         }
-      } else if (session.data.role === 'ADMIN') {
-        const defaultAdmin = this.db.prepare("SELECT full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
-        if (defaultAdmin) {
-          session.data.fullName = defaultAdmin.full_name;
+
+        if (user.member_id) {
+          const m = this.db
+            .prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?')
+            .get(user.member_id) as MemberRow | undefined;
+
+          if (m) {
+            session.data.memberId = m.id;
+            session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+            // Effective ADMIN role is strictly anchored to canonical users account linked to default admin members
+            session.data.role = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
+          } else {
+            session.data.memberId = null;
+            session.data.fullName = user.full_name;
+            session.data.role = 'MEMBER';
+          }
+        } else {
+          session.data.memberId = null;
+          session.data.fullName = user.full_name;
+          session.data.role = 'MEMBER';
+        }
+      } else {
+        // Non-users account (e.g. legacy staff_users row, test-generated session, or unlinked session)
+        // Must NEVER receive ADMIN role regardless of memberId.
+        session.data.role = 'MEMBER';
+        if (session.data.memberId) {
+          const m = this.db
+            .prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?')
+            .get(session.data.memberId) as MemberRow | undefined;
+          if (m) {
+            session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+            session.data.memberId = m.id;
+          } else {
+            session.data.memberId = null;
+          }
         }
       }
     }

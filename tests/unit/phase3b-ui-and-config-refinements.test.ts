@@ -28,10 +28,7 @@ describe('Phase 3B UI Finalization & Direct Autocomplete (A-K Requirements)', ()
     // Create staff user for treasurer tests
     const argon2 = await import('argon2');
     const hash = await argon2.hash('test-password-123', { type: argon2.argon2id });
-    db.prepare(`
-      INSERT INTO staff_users (id, username, password_hash, full_name, role)
-      VALUES ('staff-treasurer-1', 'treasurer', ?, 'Thủ Quỹ Lớp', 'TREASURER')
-    `).run(hash);
+    await authService.seedInitialStaff('treasurer', hash);
 
     app = await buildApp({ db, authService });
   });
