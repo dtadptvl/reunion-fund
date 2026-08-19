@@ -509,31 +509,15 @@ export class AuthService {
         return { status: 'INVALID_CREDENTIALS', error: 'Tên đăng nhập hoặc mật khẩu không chính xác' };
       }
 
-      let staffFullName = staff.full_name;
-      let staffRole: UserRole = 'MEMBER';
-      let staffMemberId: string | null = staff.member_id || null;
-      if (staff.member_id) {
-        const m = this.db.prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?').get(staff.member_id) as MemberRow | undefined;
-        if (m) {
-          staffFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
-          const userAccount = this.db.prepare('SELECT id FROM users WHERE member_id = ?').get(m.id);
-          if (!userAccount && isDefaultAdminMember(m.full_name)) {
-            staffRole = 'ADMIN';
-          } else {
-            staffRole = 'MEMBER';
-          }
-          staffMemberId = m.id;
-        }
-      }
-
+      // Legacy staff_users rows are strictly non-admin MEMBER access and cannot claim canonical admin memberId
       return {
         status: 'SUCCESS',
         session: {
           userId: staff.id,
           username: staff.username,
-          fullName: staffFullName,
-          role: staffRole,
-          memberId: staffMemberId,
+          fullName: staff.full_name,
+          role: 'MEMBER',
+          memberId: null,
           email: null,
         },
       };
@@ -560,16 +544,53 @@ export class AuthService {
     }
 
     if (this.db && this.db.open) {
-      if (session.data.memberId) {
-        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(session.data.memberId) as MemberRow | undefined;
-        if (m) {
-          session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
-          session.data.role = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
+      // 1. Look up authoritative user record in users table by session.data.userId
+      const user = this.db
+        .prepare('SELECT id, member_id, role, full_name, status, email_verified FROM users WHERE id = ?')
+        .get(session.data.userId) as UserRow | undefined;
+
+      if (user) {
+        // Locked or unverified users cannot hold active valid sessions
+        if (user.status === 'LOCKED' || user.email_verified === 0) {
+          this.sessions.delete(token);
+          return null;
+        }
+
+        if (user.member_id) {
+          const m = this.db
+            .prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?')
+            .get(user.member_id) as MemberRow | undefined;
+
+          if (m) {
+            session.data.memberId = m.id;
+            session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+            // Effective ADMIN role is strictly anchored to canonical users account linked to default admin members
+            session.data.role = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
+          } else {
+            session.data.memberId = null;
+            session.data.fullName = user.full_name;
+            session.data.role = 'MEMBER';
+          }
         } else {
+          session.data.memberId = null;
+          session.data.fullName = user.full_name;
           session.data.role = 'MEMBER';
         }
       } else {
+        // Non-users account (e.g. legacy staff_users row, test-generated session, or unlinked session)
+        // Must NEVER receive ADMIN role regardless of memberId.
         session.data.role = 'MEMBER';
+        if (session.data.memberId) {
+          const m = this.db
+            .prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?')
+            .get(session.data.memberId) as MemberRow | undefined;
+          if (m) {
+            session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+            session.data.memberId = m.id;
+          } else {
+            session.data.memberId = null;
+          }
+        }
       }
     }
 

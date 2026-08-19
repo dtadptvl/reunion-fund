@@ -325,8 +325,8 @@ describe('H1.1 Startup Admin Canonicalization Hardening', () => {
     expect(u2.full_name).toBe('Trần Văn Quỹ (Khách mời)');
   });
 
-  // 11. Dirty state: staff_users legacy credential cannot authenticate as an additional Admin when real account exists
-  it('dirty state: staff_users legacy credential cannot authenticate as an additional Admin when real Dương Tuấn Anh account exists', async () => {
+  // 11. Dirty state: staff_users legacy credential cannot authenticate/validate as an additional Admin across full lifecycle
+  it('dirty state: staff_users legacy credential cannot authenticate as an additional Admin across full lifecycle when real Dương Tuấn Anh account exists', async () => {
     const tuanAnh = db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
 
     // 1. Real account linked to Dương Tuấn Anh in users
@@ -336,12 +336,12 @@ describe('H1.1 Startup Admin Canonicalization Hardening', () => {
       VALUES ('u-real-tuananh', ?, 'tuananh_real', 'tuananh@example.com', ?, 'Dương Tuấn Anh', 'ADMIN', 'ACTIVE', 1)
     `).run(tuanAnh.id, hashReal);
 
-    // 2. Separate legacy staff_users row with its own password
+    // 2. Separate legacy staff_users row with its own password and pointed to Dương Tuấn Anh's member_id
     const hashLegacyStaff = await authService.hashPassword('OldStaffSecret999!');
     db.prepare(`
       INSERT INTO staff_users (id, username, password_hash, full_name, role, member_id)
-      VALUES ('s-legacy-thuquy', 'thuquy', ?, 'Thủ Quỹ Lớp', 'TREASURER', NULL)
-    `).run(hashLegacyStaff);
+      VALUES ('s-legacy-thuquy', 'thuquy', ?, 'Thủ Quỹ Lớp', 'TREASURER', ?)
+    `).run(hashLegacyStaff, tuanAnh.id);
 
     // Re-run seedDefaultAdmins
     authService.seedDefaultAdmins();
@@ -349,16 +349,52 @@ describe('H1.1 Startup Admin Canonicalization Hardening', () => {
     // Authenticate with legacy staff_users credentials
     const staffAuth = await authService.authenticate('thuquy', 'OldStaffSecret999!');
     expect(staffAuth.status).toBe('SUCCESS');
-    // Must NOT receive ADMIN role or steal Dương Tuấn Anh's identity
     expect(staffAuth.session?.role).toBe('MEMBER');
     expect(staffAuth.session?.memberId).toBeNull();
     expect(staffAuth.session?.fullName).toBe('Thủ Quỹ Lớp');
 
-    // Real account authenticates as ADMIN
+    // Run full lifecycle: createSession -> validateSession
+    const staffToken = authService.createSession(staffAuth.session!);
+    const validatedStaffSession = authService.validateSession(staffToken);
+    expect(validatedStaffSession).not.toBeNull();
+    // Must NOT be re-elevated to ADMIN upon session validation
+    expect(validatedStaffSession?.role).toBe('MEMBER');
+    expect(validatedStaffSession?.memberId).toBeNull();
+
+    // Real account authenticates and validates as ADMIN across full lifecycle
     const realAuth = await authService.authenticate('tuananh_real', 'RealTuanAnhPass123!');
     expect(realAuth.status).toBe('SUCCESS');
     expect(realAuth.session?.role).toBe('ADMIN');
     expect(realAuth.session?.fullName).toBe('Dương Tuấn Anh');
     expect(realAuth.session?.memberId).toBe(tuanAnh.id);
+
+    const realToken = authService.createSession(realAuth.session!);
+    const validatedRealSession = authService.validateSession(realToken);
+    expect(validatedRealSession).not.toBeNull();
+    expect(validatedRealSession?.role).toBe('ADMIN');
+    expect(validatedRealSession?.fullName).toBe('Dương Tuấn Anh');
+    expect(validatedRealSession?.memberId).toBe(tuanAnh.id);
+  });
+
+  // 12. Security regression: fabricated/stale session carrying admin memberId with non-canonical userId cannot become ADMIN
+  it('security regression: fabricated session carrying admin memberId with non-canonical userId cannot become ADMIN via validateSession', () => {
+    const tuanAnh = db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+
+    // Fabricate a session token directly in AuthService memory containing Dương Tuấn Anh's memberId but a bogus userId
+    const token = authService.createSession({
+      userId: 'bogus-fabricated-user-id',
+      username: 'hacker',
+      fullName: 'Fake Admin',
+      role: 'ADMIN',
+      memberId: tuanAnh.id,
+      email: 'hacker@example.com',
+    });
+
+    const validated = authService.validateSession(token);
+    expect(validated).not.toBeNull();
+    // validateSession must downgrade the role to MEMBER even though memberId is Dương Tuấn Anh
+    expect(validated?.role).toBe('MEMBER');
+    expect(validated?.fullName).toBe('Dương Tuấn Anh');
+    expect(validated?.memberId).toBe(tuanAnh.id);
   });
 });
