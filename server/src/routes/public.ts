@@ -76,8 +76,29 @@ export async function publicRoutes(
       },
     },
     async (request, reply) => {
+      const musicMeta = lotteryService.getBackgroundMusicMetadata();
+      const storage = lotteryService.getStorage();
+      const isR2 = storage.providerName === 'R2' || storage.providerName === 'R2_MIRRORED' || musicMeta?.storageProvider === 'R2' || musicMeta?.storageProvider === 'R2_MIRRORED';
+
+      if (musicMeta && isR2 && musicMeta.storageKey) {
+        const publicUrl = storage.getPublicUrl(musicMeta.storageKey);
+        reply.header('Cache-Control', 'public, max-age=3600');
+        return reply.redirect(publicUrl, 302);
+      }
+
+      // Try reading via storage getStream if storageKey exists
+      if (musicMeta && musicMeta.storageKey) {
+        const streamObj = await storage.getStream(musicMeta.storageKey);
+        if (streamObj) {
+          reply.header('Content-Type', musicMeta.mimeType || streamObj.header.contentType || 'audio/mpeg');
+          reply.header('Cache-Control', 'public, max-age=3600');
+          return reply.send(streamObj.stream);
+        }
+      }
+
+      // Fallback to local file path
       const audio = lotteryService.getBackgroundMusicFilePath();
-      if (!audio) {
+      if (!audio || !fs.existsSync(audio.filePath)) {
         return reply.status(404).send({ error: 'Chưa có nhạc nền được tải lên.' });
       }
 
@@ -720,6 +741,26 @@ export async function publicRoutes(
     const attachment = options.attachmentService.getAttachmentById(id);
     if (!attachment) {
       return reply.status(404).send({ error: 'Không tìm thấy chứng từ' });
+    }
+
+    const storage = options.attachmentService.getStorage();
+    const isR2 = attachment.storage_provider === 'R2' || attachment.storage_provider === 'R2_MIRRORED' || storage.providerName === 'R2' || storage.providerName === 'R2_MIRRORED';
+
+    if (isR2 && attachment.storage_key) {
+      const publicUrl = storage.getPublicUrl(attachment.storage_key);
+      reply.header('Cache-Control', 'public, max-age=86400');
+      return reply.redirect(publicUrl, 302);
+    }
+
+    // Local / fallback streaming:
+    const key = attachment.storage_key || `receipts/${attachment.file_name}`;
+    const stored = await storage.get(key);
+    if (stored) {
+      reply.header('Content-Type', attachment.mime_type || stored.contentType || 'application/octet-stream');
+      reply.header('X-Content-Type-Options', 'nosniff');
+      reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.original_name)}"`);
+      reply.header('Cache-Control', 'public, max-age=86400');
+      return reply.send(stored.body);
     }
 
     const filePath = options.attachmentService.getSafeFilePath(attachment);

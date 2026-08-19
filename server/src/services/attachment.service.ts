@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { AttachmentRow } from '../db/schema.js';
+import { ObjectStorage, LocalStorageProvider } from '../storage/index.js';
 
 export interface ValidatedFile {
   isValid: boolean;
@@ -80,21 +81,41 @@ export function validateAttachmentMagicBytes(buffer: Buffer): ValidatedFile {
 }
 
 export class AttachmentService {
+  private storage: ObjectStorage;
+  private uploadDir: string;
+
   constructor(
     private db: Database.Database,
-    private uploadDir: string
+    storageOrUploadDir: ObjectStorage | string,
+    uploadDirFallback?: string
   ) {
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
+    if (typeof storageOrUploadDir === 'string') {
+      this.uploadDir = storageOrUploadDir;
+      this.storage = new LocalStorageProvider(storageOrUploadDir);
+    } else {
+      this.storage = storageOrUploadDir;
+      this.uploadDir = uploadDirFallback || './data/uploads';
+    }
+
+    if (this.uploadDir && !fs.existsSync(this.uploadDir)) {
+      try {
+        fs.mkdirSync(this.uploadDir, { recursive: true });
+      } catch {
+        // ignore
+      }
     }
   }
 
-  saveAttachment(
+  getStorage(): ObjectStorage {
+    return this.storage;
+  }
+
+  async saveAttachment(
     expenseId: string,
     originalFilename: string,
     buffer: Buffer,
     uploadedBy = 'system'
-  ): AttachmentRow {
+  ): Promise<AttachmentRow> {
     const validation = validateAttachmentMagicBytes(buffer);
     if (!validation.isValid || !validation.mimeType) {
       throw new Error(validation.error || 'Tập tin không hợp lệ');
@@ -109,10 +130,16 @@ export class AttachmentService {
     const id = crypto.randomUUID();
     const ext = path.extname(originalFilename) || (validation.mimeType === 'application/pdf' ? '.pdf' : '.jpg');
     const storedFilename = `${expenseId}_${id}${ext}`;
-    const storagePath = path.join(this.uploadDir, storedFilename);
+    const storageKey = `receipts/${storedFilename}`;
     const sha256Hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const storagePath = path.join(this.uploadDir, storedFilename);
 
-    fs.writeFileSync(storagePath, buffer);
+    // 1. Write to storage abstraction first
+    await this.storage.put(storageKey, buffer, {
+      contentType: validation.mimeType,
+      contentDisposition: `inline; filename="${encodeURIComponent(path.basename(originalFilename))}"`,
+      sha256: sha256Hash,
+    });
 
     const attachment: AttachmentRow = {
       id,
@@ -123,25 +150,40 @@ export class AttachmentService {
       file_size: buffer.length,
       sha256_hash: sha256Hash,
       storage_path: storagePath,
+      storage_provider: this.storage.providerName,
+      storage_key: storageKey,
       uploaded_by: uploadedBy,
       created_at: new Date().toISOString(),
     };
 
-    this.db.prepare(`
-      INSERT INTO attachments (
-        id, expense_id, file_name, original_name, mime_type, file_size, sha256_hash, storage_path, uploaded_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `).run(
-      attachment.id,
-      attachment.expense_id,
-      attachment.file_name,
-      attachment.original_name,
-      attachment.mime_type,
-      attachment.file_size,
-      attachment.sha256_hash,
-      attachment.storage_path,
-      attachment.uploaded_by
-    );
+    // 2. Commit metadata to database with compensation if DB write fails
+    try {
+      this.db.prepare(`
+        INSERT INTO attachments (
+          id, expense_id, file_name, original_name, mime_type, file_size, sha256_hash, storage_path, storage_provider, storage_key, uploaded_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(
+        attachment.id,
+        attachment.expense_id,
+        attachment.file_name,
+        attachment.original_name,
+        attachment.mime_type,
+        attachment.file_size,
+        attachment.sha256_hash,
+        attachment.storage_path,
+        attachment.storage_provider,
+        attachment.storage_key,
+        attachment.uploaded_by
+      );
+    } catch (dbErr) {
+      // Compensation: remove written object from storage so no orphan remains
+      try {
+        await this.storage.delete(storageKey);
+      } catch (storageDelErr) {
+        console.warn('[AttachmentService] Failed to compensate storage object on DB error:', storageDelErr);
+      }
+      throw dbErr;
+    }
 
     return attachment;
   }
@@ -158,11 +200,16 @@ export class AttachmentService {
       .get(id) as AttachmentRow | undefined;
   }
 
-  deleteAttachment(id: string): boolean {
+  async deleteAttachment(id: string): Promise<boolean> {
     const attachment = this.getAttachmentById(id);
     if (!attachment) return false;
 
-    // Delete from filesystem safely
+    const key = attachment.storage_key || `receipts/${attachment.file_name}`;
+
+    // 1. Delete from storage abstraction
+    await this.storage.delete(key);
+
+    // 2. Delete legacy local file if present
     const safePath = this.getSafeFilePath(attachment);
     if (safePath && fs.existsSync(safePath)) {
       try {
@@ -172,19 +219,30 @@ export class AttachmentService {
       }
     }
 
+    // 3. Delete metadata from DB
     this.db.prepare('DELETE FROM attachments WHERE id = ?').run(id);
     return true;
   }
 
   getSafeFilePath(attachment: AttachmentRow): string | null {
-    // Resolve absolute path and verify it stays inside uploadDir
     const resolvedUploadDir = path.resolve(this.uploadDir);
-    const resolvedFilePath = path.resolve(resolvedUploadDir, path.basename(attachment.file_name));
+    const candidates = [
+      path.resolve(resolvedUploadDir, path.basename(attachment.file_name)),
+      path.resolve(resolvedUploadDir, 'receipts', path.basename(attachment.file_name)),
+      attachment.storage_key ? path.resolve(resolvedUploadDir, attachment.storage_key) : null,
+    ].filter(Boolean) as string[];
 
-    if (!resolvedFilePath.startsWith(resolvedUploadDir)) {
-      return null;
+    for (const c of candidates) {
+      if (c.startsWith(resolvedUploadDir) && fs.existsSync(c)) {
+        return c;
+      }
     }
 
-    return resolvedFilePath;
+    const defaultPath = path.resolve(resolvedUploadDir, 'receipts', path.basename(attachment.file_name));
+    if (defaultPath.startsWith(resolvedUploadDir)) {
+      return defaultPath;
+    }
+
+    return null;
   }
 }

@@ -1,5 +1,6 @@
 export interface Env {
   ASSETS: Fetcher;
+  MEDIA_BUCKET?: R2Bucket;
   UPSTREAM_ORIGIN?: string;
 }
 
@@ -24,6 +25,112 @@ export default {
       }
       // Native Cloudflare Worker subrequest to origin zone (bypasses Worker route, preventing proxy loops)
       return fetch(request);
+    }
+
+    // 2. Media Route (/media/*) served directly from Cloudflare R2
+    if (url.pathname === '/media' || url.pathname.startsWith('/media/')) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: {
+            ...SECURITY_HEADERS,
+            Allow: 'GET, HEAD',
+          },
+        });
+      }
+
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent(url.pathname);
+      } catch {
+        return new Response('Bad Request: Invalid encoding', {
+          status: 400,
+          headers: { ...SECURITY_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
+
+      const mediaKey = decodedPath.replace(/^\/media\/?/, '');
+
+      // Traversal and security validation
+      const segments = mediaKey.split('/');
+      if (
+        !mediaKey ||
+        mediaKey.includes('\0') ||
+        mediaKey.includes('\\') ||
+        mediaKey.startsWith('/') ||
+        segments.includes('..') ||
+        segments.includes('.')
+      ) {
+        return new Response('Bad Request: Invalid media key', {
+          status: 400,
+          headers: {
+            ...SECURITY_HEADERS,
+            'Content-Type': 'text/plain; charset=utf-8',
+          },
+        });
+      }
+
+      if (!env.MEDIA_BUCKET) {
+        return new Response('Service Unavailable: Media bucket not configured', {
+          status: 503,
+          headers: {
+            ...SECURITY_HEADERS,
+            'Content-Type': 'text/plain; charset=utf-8',
+          },
+        });
+      }
+
+      if (request.method === 'HEAD') {
+        const headObj = await env.MEDIA_BUCKET.head(mediaKey);
+        if (!headObj) {
+          return new Response('Not Found', {
+            status: 404,
+            headers: {
+              ...SECURITY_HEADERS,
+              'Content-Type': 'text/plain; charset=utf-8',
+            },
+          });
+        }
+
+        const headers = new Headers();
+        for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+          headers.set(k, v);
+        }
+        headers.set('Content-Type', headObj.httpMetadata?.contentType || 'application/octet-stream');
+        headers.set('Content-Disposition', headObj.httpMetadata?.contentDisposition || 'inline');
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        headers.set('Content-Length', headObj.size.toString());
+        if (headObj.httpEtag) {
+          headers.set('ETag', headObj.httpEtag);
+        }
+
+        return new Response(null, { status: 200, headers });
+      }
+
+      const obj = await env.MEDIA_BUCKET.get(mediaKey);
+      if (!obj) {
+        return new Response('Not Found', {
+          status: 404,
+          headers: {
+            ...SECURITY_HEADERS,
+            'Content-Type': 'text/plain; charset=utf-8',
+          },
+        });
+      }
+
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+        headers.set(k, v);
+      }
+      headers.set('Content-Type', obj.httpMetadata?.contentType || 'application/octet-stream');
+      headers.set('Content-Disposition', obj.httpMetadata?.contentDisposition || 'inline');
+      headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+      headers.set('Content-Length', obj.size.toString());
+      if (obj.httpEtag) {
+        headers.set('ETag', obj.httpEtag);
+      }
+
+      return new Response(obj.body, { status: 200, headers });
     }
 
     // 2. Static Assets (React SPA + static assets with single-page-application fallback)

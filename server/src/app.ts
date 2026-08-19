@@ -42,12 +42,17 @@ import { AttachmentService } from './services/attachment.service.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { ObjectStorage, StorageFactory } from './storage/index.js';
+
 export interface BuildAppOptions {
   db: Database.Database;
   bankSyncProvider?: BankSyncProvider;
   aiProvider?: AIProvider;
   emailProvider?: EmailProvider;
   authService?: AuthService;
+  storage?: ObjectStorage;
+  attachmentService?: AttachmentService;
+  lotteryService?: LotteryService;
 }
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -100,11 +105,23 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (!options.authService) {
     authService.seedInitialStaff(config.ADMIN_USERNAME, config.ADMIN_PASSWORD_HASH).catch(console.error);
   }
+  const storage =
+    options.storage ||
+    StorageFactory.createStorage({
+      STORAGE_PROVIDER: config.STORAGE_PROVIDER,
+      STORAGE_PATH: config.STORAGE_PATH,
+      R2_ACCOUNT_ID: config.R2_ACCOUNT_ID,
+      R2_ACCESS_KEY_ID: config.R2_ACCESS_KEY_ID,
+      R2_SECRET_ACCESS_KEY: config.R2_SECRET_ACCESS_KEY,
+      R2_BUCKET: config.R2_BUCKET,
+      R2_PUBLIC_BASE_URL: config.R2_PUBLIC_BASE_URL,
+    });
+
   const exportService = new ExportService(db);
   const auditService = new AuditService(db);
-  const attachmentService = new AttachmentService(db, config.STORAGE_PATH);
+  const attachmentService = options.attachmentService || new AttachmentService(db, storage, config.STORAGE_PATH);
   const activityService = new ActivityService(db);
-  const lotteryService = new LotteryService(db);
+  const lotteryService = options.lotteryService || new LotteryService(db, config.STORAGE_PATH, storage);
 
   // Security Plugins
   app.register(cors, {

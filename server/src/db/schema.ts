@@ -167,6 +167,8 @@ export interface AttachmentRow {
   file_size: number;
   sha256_hash: string;
   storage_path: string;
+  storage_provider?: string;
+  storage_key?: string | null;
   uploaded_by?: string | null;
   created_at: string;
 }

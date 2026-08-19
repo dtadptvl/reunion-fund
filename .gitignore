@@ -17,15 +17,16 @@ client/dist/
 server/dist/
 
 # SQLite databases & runtime data
-data/
+/data/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
-uploads/
-storage/
-temp/
-tmp/
+/uploads/
+/storage/
+/temp/
+/tmp/
+!server/src/storage/
 
 # Backups & dumps
 backups/

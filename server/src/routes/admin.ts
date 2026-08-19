@@ -437,7 +437,7 @@ export async function adminRoutes(
 
     try {
       const buffer = await data.toBuffer();
-      const attachment = options.attachmentService.saveAttachment(
+      const attachment = await options.attachmentService.saveAttachment(
         id,
         data.filename,
         buffer,
@@ -479,7 +479,7 @@ export async function adminRoutes(
       return reply.status(404).send({ error: 'Không tìm thấy chứng từ' });
     }
 
-    options.attachmentService.deleteAttachment(id);
+    await options.attachmentService.deleteAttachment(id);
 
     options.auditService.log({
       actor: user.username,
