@@ -35,12 +35,13 @@ describe('Admin Canonical Identity & Legacy String Purge', () => {
     expect(defaultAdmins.length).toBe(2);
   });
 
-  it('purges any legacy "Thủ Quỹ" display name during seeding', async () => {
-    // Manually inject a legacy row to simulate stale state
+  it('purges any legacy "Thủ Quỹ" display name during migration', async () => {
+    // Manually inject a legacy row to simulate pre-migration state
     db.prepare("INSERT OR REPLACE INTO staff_users (id, username, password_hash, full_name, role) VALUES ('legacy-1', 'admin_legacy', 'hash', 'Thủ Quỹ Lớp A1', 'ADMIN')").run();
 
-    // Re-run seed
-    authService.seedDefaultAdmins();
+    // Reset migration record so migration 009 runs on the newly injected legacy row
+    db.prepare("DELETE FROM schema_migrations WHERE version = '009_clean_legacy_treasurer_identity.sql'").run();
+    runMigrations(db);
 
     const staffRow = db.prepare("SELECT full_name FROM staff_users WHERE id = 'legacy-1'").get() as any;
     expect(staffRow.full_name).not.toContain('Thủ Quỹ');

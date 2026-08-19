@@ -5,7 +5,6 @@ import { runMigrations } from '../../server/src/db/connection.js';
 import { MockBankSyncProvider } from '../../server/src/providers/bank-sync/mock-provider.js';
 import { MockAIProvider } from '../../server/src/providers/ai/mock-ai-provider.js';
 import { ExpenseService } from '../../server/src/services/expense.service.js';
-import { MemberService } from '../../server/src/services/member.service.js';
 import { AuthService } from '../../server/src/services/auth.service.js';
 import { BankTransactionRow } from '../../server/src/db/schema.js';
 
