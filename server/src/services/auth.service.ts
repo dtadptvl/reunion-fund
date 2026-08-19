@@ -154,9 +154,36 @@ export class AuthService {
   seedDefaultAdmins(): void {
     if (!this.db || !this.db.open) return;
 
+    // 1. If bootstrap admin user ('admin' or 'thuquy') exists without member_id, and Dương Tuấn Anh is not claimed, link it
+    const tuanAnh = this.db
+      .prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'")
+      .get() as MemberRow | undefined;
+
+    if (tuanAnh) {
+      const existingUser = this.db
+        .prepare('SELECT id, username FROM users WHERE member_id = ?')
+        .get(tuanAnh.id) as { id: string; username: string } | undefined;
+
+      if (!existingUser) {
+        const unlinkedBootstrap = this.db
+          .prepare("SELECT id FROM users WHERE (username = 'admin' OR username = 'thuquy') AND member_id IS NULL")
+          .get() as { id: string } | undefined;
+
+        if (unlinkedBootstrap) {
+          this.db
+            .prepare("UPDATE users SET member_id = ?, role = 'ADMIN', full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .run(tuanAnh.id, tuanAnh.full_name, unlinkedBootstrap.id);
+        }
+      }
+
+      this.db
+        .prepare("UPDATE staff_users SET member_id = ? WHERE (username = 'admin' OR username = 'thuquy') AND member_id IS NULL")
+        .run(tuanAnh.id);
+    }
+
     const adminMemberIds: string[] = [];
 
-    // Ensure accounts linked to default admin members (Dương Tuấn Anh, Hoàng Thị Nhàn) have role 'ADMIN'
+    // 2. Ensure accounts linked to default admin members (Dương Tuấn Anh, Hoàng Thị Nhàn) have role 'ADMIN'
     for (const adminName of DEFAULT_ADMIN_NAMES) {
       const normalized = removeVietnameseDiacritics(adminName);
       const members = this.db
@@ -171,12 +198,16 @@ export class AuthService {
       }
     }
 
-    // Narrowly ensure any accounts linked to OTHER canonical members have role 'MEMBER'
+    // 3. Ensure any unlinked user accounts or accounts linked to OTHER canonical members have role 'MEMBER'
     if (adminMemberIds.length > 0) {
       const placeholders = adminMemberIds.map(() => '?').join(',');
       this.db
-        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE member_id IS NOT NULL AND member_id NOT IN (${placeholders}) AND role != 'MEMBER'`)
+        .prepare(`UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE (member_id IS NULL AND role != 'MEMBER') OR (member_id IS NOT NULL AND member_id NOT IN (${placeholders}) AND role != 'MEMBER')`)
         .run(...adminMemberIds);
+    } else {
+      this.db
+        .prepare("UPDATE users SET role = 'MEMBER', updated_at = CURRENT_TIMESTAMP WHERE role != 'MEMBER'")
+        .run();
     }
   }
 
@@ -449,18 +480,12 @@ export class AuthService {
       }
 
       let canonicalFullName = user.full_name;
-      let canonicalRole: UserRole = user.role;
+      let canonicalRole: UserRole = 'MEMBER';
       if (user.member_id) {
-        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(user.member_id) as any;
+        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(user.member_id) as MemberRow | undefined;
         if (m) {
           canonicalFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
           canonicalRole = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
-        }
-      } else if (user.role === 'ADMIN' || user.username === 'admin') {
-        const defaultAdmin = this.db.prepare("SELECT full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
-        if (defaultAdmin) {
-          canonicalFullName = defaultAdmin.full_name;
-          canonicalRole = 'ADMIN';
         }
       }
 
@@ -488,19 +513,22 @@ export class AuthService {
         return { status: 'INVALID_CREDENTIALS', error: 'Tên đăng nhập hoặc mật khẩu không chính xác' };
       }
 
-      let staffFullName = 'Dương Tuấn Anh';
-      let staffMemberId: string | null = null;
+      let staffFullName = staff.full_name;
+      let staffRole: UserRole = 'MEMBER';
+      let staffMemberId: string | null = staff.member_id || null;
       if (staff.member_id) {
-        const m = this.db.prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?').get(staff.member_id) as any;
+        const m = this.db.prepare('SELECT id, full_name, disambiguator FROM members WHERE id = ?').get(staff.member_id) as MemberRow | undefined;
         if (m) {
           staffFullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
+          staffRole = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
           staffMemberId = m.id;
         }
       } else {
-        const defaultAdmin = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
-        if (defaultAdmin) {
-          staffFullName = defaultAdmin.full_name;
-          staffMemberId = defaultAdmin.id;
+        const tuanAnh = this.db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as MemberRow | undefined;
+        if (tuanAnh) {
+          staffFullName = tuanAnh.full_name;
+          staffRole = 'ADMIN';
+          staffMemberId = tuanAnh.id;
         }
       }
 
@@ -510,7 +538,7 @@ export class AuthService {
           userId: staff.id,
           username: staff.username,
           fullName: staffFullName,
-          role: 'ADMIN',
+          role: staffRole,
           memberId: staffMemberId,
           email: null,
         },
@@ -539,17 +567,15 @@ export class AuthService {
 
     if (this.db && this.db.open) {
       if (session.data.memberId) {
-        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(session.data.memberId) as any;
+        const m = this.db.prepare('SELECT full_name, disambiguator FROM members WHERE id = ?').get(session.data.memberId) as MemberRow | undefined;
         if (m) {
           session.data.fullName = `${m.full_name}${m.disambiguator ? ` (${m.disambiguator})` : ''}`;
           session.data.role = isDefaultAdminMember(m.full_name) ? 'ADMIN' : 'MEMBER';
+        } else {
+          session.data.role = 'MEMBER';
         }
-      } else if (session.data.role === 'ADMIN' || session.data.username === 'admin') {
-        const defaultAdmin = this.db.prepare("SELECT full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
-        if (defaultAdmin) {
-          session.data.fullName = defaultAdmin.full_name;
-          session.data.role = 'ADMIN';
-        }
+      } else {
+        session.data.role = 'MEMBER';
       }
     }
 

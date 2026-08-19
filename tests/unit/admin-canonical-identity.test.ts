@@ -5,6 +5,7 @@ import { runMigrations } from '../../server/src/db/connection.js';
 import { MockBankSyncProvider } from '../../server/src/providers/bank-sync/mock-provider.js';
 import { MockAIProvider } from '../../server/src/providers/ai/mock-ai-provider.js';
 import { AuthService } from '../../server/src/services/auth.service.js';
+import { MemberService } from '../../server/src/services/member.service.js';
 
 describe('Admin Canonical Identity & Legacy String Purge', () => {
   let db: Database.Database;
@@ -14,6 +15,7 @@ describe('Admin Canonical Identity & Legacy String Purge', () => {
   beforeEach(async () => {
     db = new Database(':memory:');
     runMigrations(db);
+    new MemberService(db).seedCanonicalRoster();
     authService = new AuthService(db);
     await authService.seedInitialStaff('admin', undefined, 'Dương Tuấn Anh');
     app = buildApp({

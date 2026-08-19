@@ -25,7 +25,7 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().default('placeholder_gemini_key'),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 
-  ADMIN_USERNAME: z.string().default('thuquy'),
+  ADMIN_USERNAME: z.string().default('admin'),
   ADMIN_PASSWORD_HASH: z.string().default('$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy'),
   SESSION_SECRET: z.string().default('default_insecure_secret_for_development_mode_only_replace_in_prod'),
   COOKIE_SECURE: z.coerce.boolean().default(false),

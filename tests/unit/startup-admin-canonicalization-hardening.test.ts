@@ -206,4 +206,122 @@ describe('H1.1 Startup Admin Canonicalization Hardening', () => {
       process.env.NODE_ENV = originalEnv;
     }
   });
+
+  // 8. Dirty state: Dương Tuấn Anh already has a linked account + separate unlinked legacy admin exists
+  it('dirty state: unlinked legacy admin account cannot authenticate/authorize as ADMIN when Dương Tuấn Anh already has a linked account', async () => {
+    const tuanAnh = db.prepare("SELECT id, full_name FROM members WHERE full_name = 'Dương Tuấn Anh'").get() as any;
+
+    // 1. Real account linked to Dương Tuấn Anh
+    const hashTuanAnh = await authService.hashPassword('RealTuanAnhPass123!');
+    db.prepare(`
+      INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified)
+      VALUES ('u-real-tuananh', ?, 'tuananh_real', 'tuananh@example.com', ?, 'Dương Tuấn Anh', 'ADMIN', 'ACTIVE', 1)
+    `).run(tuanAnh.id, hashTuanAnh);
+
+    // 2. Separate unlinked legacy admin account
+    const hashLegacyAdmin = await authService.hashPassword('LegacyAdminPass123!');
+    db.prepare(`
+      INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified)
+      VALUES ('u-legacy-admin', NULL, 'admin', 'admin@reunion.local', ?, 'Admin Cũ', 'ADMIN', 'ACTIVE', 1)
+    `).run(hashLegacyAdmin);
+
+    // Normalize
+    authService.seedDefaultAdmins();
+
+    // The unlinked legacy admin must be downgraded to MEMBER
+    const legacyAdminRow = db.prepare("SELECT * FROM users WHERE id = 'u-legacy-admin'").get() as any;
+    expect(legacyAdminRow.role).toBe('MEMBER');
+    expect(legacyAdminRow.member_id).toBeNull();
+
+    // Authenticating with unlinked legacy admin yields MEMBER role and does NOT project as Dương Tuấn Anh
+    const legacyAuth = await authService.authenticate('admin', 'LegacyAdminPass123!');
+    expect(legacyAuth.status).toBe('SUCCESS');
+    expect(legacyAuth.session?.role).toBe('MEMBER');
+    expect(legacyAuth.session?.fullName).toBe('Admin Cũ');
+    expect(legacyAuth.session?.memberId).toBeNull();
+
+    // Real Dương Tuấn Anh account retains ADMIN role
+    const realAuth = await authService.authenticate('tuananh_real', 'RealTuanAnhPass123!');
+    expect(realAuth.status).toBe('SUCCESS');
+    expect(realAuth.session?.role).toBe('ADMIN');
+    expect(realAuth.session?.fullName).toBe('Dương Tuấn Anh');
+    expect(realAuth.session?.memberId).toBe(tuanAnh.id);
+
+    // Re-running seedInitialStaff preserves real Dương Tuấn Anh account
+    await authService.seedInitialStaff('admin', undefined, 'Dương Tuấn Anh');
+    const checkTuanAnhRow = db.prepare("SELECT * FROM users WHERE id = 'u-real-tuananh'").get() as any;
+    expect(checkTuanAnhRow.member_id).toBe(tuanAnh.id);
+    expect(checkTuanAnhRow.role).toBe('ADMIN');
+  });
+
+  // 9. Dirty state: arbitrary unlinked row with role ADMIN is normalized to MEMBER
+  it('dirty state: arbitrary unlinked row with role ADMIN is normalized to MEMBER and has effective MEMBER role in sessions', async () => {
+    const hashRogue = await authService.hashPassword('RoguePass123!');
+    db.prepare(`
+      INSERT INTO users (id, member_id, username, email, password_hash, full_name, role, status, email_verified)
+      VALUES ('u-rogue', NULL, 'rogue_admin', 'rogue@example.com', ?, 'Rogue Admin', 'ADMIN', 'ACTIVE', 1)
+    `).run(hashRogue);
+
+    // Prior to or after seedDefaultAdmins, authenticate returns MEMBER role
+    const rogueAuth = await authService.authenticate('rogue_admin', 'RoguePass123!');
+    expect(rogueAuth.status).toBe('SUCCESS');
+    expect(rogueAuth.session?.role).toBe('MEMBER');
+    expect(rogueAuth.session?.fullName).toBe('Rogue Admin');
+
+    // Create session with stale ADMIN role for unlinked user -> validateSession forces MEMBER role
+    const token = authService.createSession({
+      userId: 'u-rogue',
+      username: 'rogue_admin',
+      fullName: 'Rogue Admin',
+      role: 'ADMIN',
+      memberId: null,
+      email: 'rogue@example.com',
+    });
+
+    const validated = authService.validateSession(token);
+    expect(validated).not.toBeNull();
+    expect(validated?.role).toBe('MEMBER');
+
+    // Run seedDefaultAdmins
+    authService.seedDefaultAdmins();
+    const rogueRow = db.prepare("SELECT role FROM users WHERE id = 'u-rogue'").get() as any;
+    expect(rogueRow.role).toBe('MEMBER');
+  });
+
+  // 10. Migration 009 exact matching regression test
+  it('migration 009 cleans exact legacy strings but leaves unrelated names containing similar text untouched', () => {
+    // Inject exact legacy strings and unrelated similar names
+    db.prepare("INSERT INTO staff_users (id, username, password_hash, full_name, role) VALUES ('s-exact-1', 's1', 'h', 'Thủ Quỹ Lớp A1', 'ADMIN')").run();
+    db.prepare("INSERT INTO staff_users (id, username, password_hash, full_name, role) VALUES ('s-exact-2', 's2', 'h', 'Thủ Quỹ Lớp', 'ADMIN')").run();
+    db.prepare("INSERT INTO staff_users (id, username, password_hash, full_name, role) VALUES ('s-exact-3', 's3', 'h', 'Thủ Quỹ', 'ADMIN')").run();
+    db.prepare("INSERT INTO staff_users (id, username, password_hash, full_name, role) VALUES ('s-unrelated-1', 's4', 'h', 'Nguyễn Thủ Quỹ', 'ADMIN')").run();
+    db.prepare("INSERT INTO staff_users (id, username, password_hash, full_name, role) VALUES ('s-unrelated-2', 's5', 'h', 'Bác Quỹ Trưởng', 'ADMIN')").run();
+
+    db.prepare("INSERT INTO users (id, username, password_hash, full_name, role, status, email_verified) VALUES ('u-exact-1', 'u1', 'h', 'Thủ Quỹ Lớp A1', 'MEMBER', 'ACTIVE', 1)").run();
+    db.prepare("INSERT INTO users (id, username, password_hash, full_name, role, status, email_verified) VALUES ('u-unrelated-1', 'u2', 'h', 'Trần Văn Quỹ (Khách mời)', 'MEMBER', 'ACTIVE', 1)").run();
+
+    // Reset migration 009 in schema_migrations so it executes on these rows
+    db.prepare("DELETE FROM schema_migrations WHERE version = '009_clean_legacy_treasurer_identity.sql'").run();
+    runMigrations(db);
+
+    // Exact matches must be updated to 'Dương Tuấn Anh'
+    const s1 = db.prepare("SELECT full_name FROM staff_users WHERE id = 's-exact-1'").get() as any;
+    const s2 = db.prepare("SELECT full_name FROM staff_users WHERE id = 's-exact-2'").get() as any;
+    const s3 = db.prepare("SELECT full_name FROM staff_users WHERE id = 's-exact-3'").get() as any;
+    const u1 = db.prepare("SELECT full_name FROM users WHERE id = 'u-exact-1'").get() as any;
+
+    expect(s1.full_name).toBe('Dương Tuấn Anh');
+    expect(s2.full_name).toBe('Dương Tuấn Anh');
+    expect(s3.full_name).toBe('Dương Tuấn Anh');
+    expect(u1.full_name).toBe('Dương Tuấn Anh');
+
+    // Unrelated names must be completely UNTOUCHED
+    const s4 = db.prepare("SELECT full_name FROM staff_users WHERE id = 's-unrelated-1'").get() as any;
+    const s5 = db.prepare("SELECT full_name FROM staff_users WHERE id = 's-unrelated-2'").get() as any;
+    const u2 = db.prepare("SELECT full_name FROM users WHERE id = 'u-unrelated-1'").get() as any;
+
+    expect(s4.full_name).toBe('Nguyễn Thủ Quỹ');
+    expect(s5.full_name).toBe('Bác Quỹ Trưởng');
+    expect(u2.full_name).toBe('Trần Văn Quỹ (Khách mời)');
+  });
 });
