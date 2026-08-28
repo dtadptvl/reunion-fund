@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatVND } from '../utils/format.js';
+import schoolLogo from '../assets/school-logo.jpg';
 
 interface NavbarProps {
   currentTab: string;
@@ -74,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           }}
           className="brand-logo"
         >
-          <span className="brand-icon" aria-hidden="true">🎓</span>
+          <img src={schoolLogo} alt="" className="brand-logo-img" />
           <div className="brand-text-group">
             <span className="brand-main-title">Lớp A1 — Khóa 48</span>
             <span className="brand-sub-title">2013–2016 • THPT Văn Lâm</span>

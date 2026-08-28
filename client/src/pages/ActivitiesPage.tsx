@@ -161,7 +161,12 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
   };
 
   if (loading || !publicData) {
-    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải kế hoạch họp lớp & hoạt động...</div>;
+    return (
+      <div className="page-loading">
+        <div className="spinner" aria-hidden="true" />
+        <span>Đang tải kế hoạch họp lớp & hoạt động...</span>
+      </div>
+    );
   }
 
   const { isLocked, activities } = publicData;
@@ -186,8 +191,8 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
           style={{
             display: 'inline-block',
             padding: '6px 16px',
-            background: 'var(--primary-light, #eff6ff)',
-            color: 'var(--primary, #1e40af)',
+            background: 'var(--primary-light)',
+            color: 'var(--primary)',
             borderRadius: '20px',
             fontSize: '0.9rem',
             fontWeight: 600,
@@ -212,7 +217,7 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
             Tròn một thập kỷ kể từ ngày chúng ta cùng nhau rời mái trường THPT Văn Lâm thân yêu để bước vào những chặng đường đời riêng.
             Buổi gặp mặt 10 năm là dịp đặc biệt để tất cả chúng ta hội ngộ, ôn lại kỷ niệm tuổi học trò và tri ân thầy cô giáo kính yêu.
           </p>
-          <div style={{ background: 'var(--bg-card-subtle, #f8fafc)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', margin: '16px 0' }}>
+          <div style={{ background: 'var(--bg-card-subtle)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', margin: '16px 0' }}>
             <div style={{ fontWeight: 700, marginBottom: '8px', color: 'var(--primary)' }}>Các chương trình hoạt động chính:</div>
             <ul style={{ margin: 0, paddingLeft: '20px' }}>
               <li><strong>1. Về trường tặng quà:</strong> Tập trung tại Trường THPT Văn Lâm, thăm lại lớp học xưa và trao quà lưu niệm.</li>
@@ -243,12 +248,12 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
             <span
               style={{
                 padding: '4px 10px',
-                background: '#fef2f2',
-                color: '#dc2626',
+                background: 'var(--danger-bg)',
+                color: 'var(--danger)',
                 borderRadius: '12px',
                 fontSize: '0.8rem',
                 fontWeight: 700,
-                border: '1px solid #fecaca',
+                border: '1px solid var(--danger-border)',
               }}
             >
               ĐÃ KHÓA ĐĂNG KÝ
@@ -261,8 +266,8 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
             <div
               style={{
                 padding: '10px 14px',
-                background: 'var(--primary-light, #eff6ff)',
-                color: 'var(--primary, #1e40af)',
+                background: 'var(--primary-light)',
+                color: 'var(--primary)',
                 borderRadius: 'var(--radius-md)',
                 marginBottom: '16px',
                 fontSize: '0.9rem',
@@ -291,13 +296,13 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
               <div
                 style={{
                   padding: '10px 14px',
-                  background: '#f0fdf4',
-                  color: '#16a34a',
+                  background: 'var(--success-bg)',
+                  color: 'var(--success-text)',
                   borderRadius: 'var(--radius-md)',
                   marginBottom: '16px',
                   fontSize: '0.9rem',
                   fontWeight: 600,
-                  border: '1px solid #bbf7d0',
+                  border: '1px solid var(--success-border)',
                 }}
               >
                 {saveSuccessMsg}
@@ -313,7 +318,7 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
                       key={act.id}
                       style={{
                         border: state.selected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                        background: state.selected ? 'var(--bg-card)' : 'var(--bg-card-subtle, #fafafa)',
+                        background: state.selected ? 'var(--bg-card)' : 'var(--bg-card-subtle)',
                         borderRadius: 'var(--radius-md)',
                         padding: '14px 16px',
                         transition: 'all 0.15s ease-in-out',
@@ -443,8 +448,8 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
                   </div>
                   <div
                     style={{
-                      background: 'var(--primary-light, #eff6ff)',
-                      color: 'var(--primary, #1e40af)',
+                      background: 'var(--primary-light)',
+                      color: 'var(--primary)',
                       padding: '4px 12px',
                       borderRadius: '16px',
                       fontWeight: 700,
@@ -465,7 +470,7 @@ export const ActivitiesPage: React.FC<ActivitiesPageProps> = ({
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           padding: '8px 12px',
-                          background: 'var(--bg-card-subtle, #f8fafc)',
+                          background: 'var(--bg-card-subtle)',
                           borderRadius: 'var(--radius-sm)',
                           border: '1px solid var(--border-color)',
                           fontSize: '0.9rem',

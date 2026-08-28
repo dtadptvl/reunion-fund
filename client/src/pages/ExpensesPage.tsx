@@ -20,7 +20,12 @@ export const ExpensesPage: React.FC = () => {
   }, []);
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải danh sách chi tiêu...</div>;
+    return (
+      <div className="page-loading">
+        <div className="spinner" aria-hidden="true" />
+        <span>Đang tải danh sách chi tiêu...</span>
+      </div>
+    );
   }
 
   return (
@@ -246,7 +251,7 @@ export const ExpensesPage: React.FC = () => {
             />
             <div
               style={{
-                color: '#fff',
+                color: 'var(--text-inverse)',
                 marginTop: '10px',
                 fontSize: '0.9rem',
                 textAlign: 'center',

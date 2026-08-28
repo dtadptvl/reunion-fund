@@ -302,7 +302,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
   };
 
   if (loading || !exceptions) {
-    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải bảng điều khiển Quản trị...</div>;
+    return (
+      <div className="page-loading">
+        <div className="spinner" aria-hidden="true" />
+        <span>Đang tải bảng điều khiển Quản trị...</span>
+      </div>
+    );
   }
 
   return (
@@ -318,7 +323,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {onGoToLuckyWheel && (
-              <button className="btn btn-outline" onClick={onGoToLuckyWheel} style={{ borderColor: '#ec4899', color: '#be185d', fontWeight: 700 }}>
+              <button className="btn btn-outline" onClick={onGoToLuckyWheel} style={{ borderColor: 'var(--wheel-accent)', color: 'var(--wheel-accent-strong)', fontWeight: 700 }}>
                 🎡 Quản lý quay số
               </button>
             )}
@@ -433,9 +438,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
                   borderRadius: '12px',
                   fontSize: '0.85rem',
                   fontWeight: 700,
-                  background: rsvpData.isLocked ? '#fef2f2' : '#f0fdf4',
-                  color: rsvpData.isLocked ? '#dc2626' : '#16a34a',
-                  border: `1px solid ${rsvpData.isLocked ? '#fecaca' : '#bbf7d0'}`,
+                  background: rsvpData.isLocked ? 'var(--danger-bg)' : 'var(--success-bg)',
+                  color: rsvpData.isLocked ? 'var(--danger)' : 'var(--success-strong)',
+                  border: `1px solid ${rsvpData.isLocked ? 'var(--danger-border)' : 'var(--success-border)'}`,
                 }}
               >
                 {rsvpData.isLocked ? '🔒 ĐÃ KHÓA ĐĂNG KÝ' : '🔓 ĐANG MỞ ĐĂNG KÝ'}
@@ -471,7 +476,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
             </div>
           )}
 
-          <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-card-subtle, #f8fafc)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+          <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-card-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
               Tổng số thành viên lớp đã đăng ký ít nhất một hoạt động:{' '}
               <strong style={{ color: 'var(--primary)', fontSize: '1.1rem' }}>
@@ -502,8 +507,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div
                     style={{
-                      background: 'var(--primary-light, #eff6ff)',
-                      color: 'var(--primary, #1e40af)',
+                      background: 'var(--primary-light)',
+                      color: 'var(--primary)',
                       padding: '4px 12px',
                       borderRadius: '16px',
                       fontWeight: 700,
@@ -523,7 +528,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
                           display: 'flex',
                           justifyContent: 'space-between',
                           padding: '6px 10px',
-                          background: 'var(--bg-card-subtle, #f8fafc)',
+                          background: 'var(--bg-card-subtle)',
                           borderRadius: 'var(--radius-sm)',
                           fontSize: '0.85rem',
                           border: '1px solid var(--border-color)',
@@ -937,7 +942,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
                     border: '1px solid var(--border-color)',
                     borderRadius: 'var(--radius-md)',
                     padding: '16px',
-                    background: '#fff',
+                    background: 'var(--bg-card)',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
@@ -991,8 +996,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
                           borderRadius: 'var(--radius-sm)',
                           fontSize: '0.85rem',
                           marginBottom: '10px',
-                          background: uploadMessage.type === 'success' ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)',
-                          color: uploadMessage.type === 'success' ? '#2e7d32' : '#d32f2f',
+                          background: uploadMessage.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
+                          color: uploadMessage.type === 'success' ? 'var(--success-text)' : 'var(--danger-text)',
                         }}
                       >
                         {uploadMessage.text}
@@ -1102,7 +1107,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardProps> = ({
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#fff',
+              background: 'var(--bg-card)',
               padding: '24px',
               borderRadius: 'var(--radius-lg)',
               maxWidth: '540px',

@@ -19,7 +19,12 @@ export const SettlementPage: React.FC = () => {
   }, []);
 
   if (loading || !overview) {
-    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải trạng thái quyết toán...</div>;
+    return (
+      <div className="page-loading">
+        <div className="spinner" aria-hidden="true" />
+        <span>Đang tải trạng thái quyết toán...</span>
+      </div>
+    );
   }
 
   return (

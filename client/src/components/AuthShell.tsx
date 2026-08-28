@@ -1,4 +1,5 @@
 import React from 'react';
+import schoolLogo from '../assets/school-logo.jpg';
 
 export interface AuthShellProps {
   title: string;
@@ -22,6 +23,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({
       <div className="auth-shell-card">
         {/* Left / Top Branding & Context Panel */}
         <div className="auth-shell-brand-panel">
+          <img src={schoolLogo} alt="Logo Trường THPT Văn Lâm" className="auth-shell-logo" />
           <div className="auth-shell-badge">{badgeText}</div>
           <h2 className="auth-shell-brand-title">LỚP A1 — KHÓA 48</h2>
           <div className="auth-shell-school">Trường THPT Văn Lâm (2013–2016)</div>

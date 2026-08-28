@@ -131,7 +131,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
         </div>
 
         {errorMessage && (
-          <div style={{ padding: '12px 16px', background: 'var(--danger-bg)', color: 'var(--danger-text)', borderRadius: 'var(--radius-md)', marginBottom: '16px', fontWeight: 500 }}>
+          <div className="alert-box alert-danger" role="alert">
             {errorMessage}
           </div>
         )}
@@ -204,16 +204,16 @@ export const ContributePage: React.FC<ContributePageProps> = ({
                   padding: '16px 20px',
                   background: 'var(--bg-card-subtle)',
                   borderRadius: 'var(--radius-md)',
-                  border: '1.5px solid #d97706',
+                  border: '1.5px solid var(--accent)',
                   marginBottom: '24px',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
-                    <div style={{ fontSize: '0.85rem', color: '#b45309', fontWeight: 600, marginBottom: '4px' }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--accent-hover)', fontWeight: 600, marginBottom: '4px' }}>
                       Đóng quỹ với tư cách khách ủng hộ
                     </div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#92400e' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-text)' }}>
                       👤 {guestName}
                     </div>
                   </div>
@@ -282,7 +282,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
                     padding: '10px 12px',
                     borderRadius: 'var(--radius-md)',
                     border: `2px solid ${isCustomAmount ? 'var(--primary)' : 'var(--border-color)'}`,
-                    background: isCustomAmount ? 'var(--card-bg)' : '#ffffff',
+                    background: isCustomAmount ? 'var(--card-bg)' : 'var(--bg-card)',
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
@@ -295,6 +295,9 @@ export const ContributePage: React.FC<ContributePageProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     <input
                       type="number"
+                      inputMode="numeric"
+                      min={1}
+                      step={1000}
                       placeholder="0"
                       value={customAmountInput}
                       onFocus={() => setIsCustomAmount(true)}
@@ -397,7 +400,7 @@ export const ContributePage: React.FC<ContributePageProps> = ({
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Trạng thái:</span>
-                    <span style={{ color: '#d97706', fontWeight: 600 }}>⏳ Đang chờ nhận tiền...</span>
+                    <span style={{ color: 'var(--accent)', fontWeight: 600 }}>⏳ Đang chờ nhận tiền...</span>
                   </div>
                 </div>
 
