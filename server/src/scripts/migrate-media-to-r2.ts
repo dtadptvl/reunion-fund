@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import { config } from '../config/env.js';
 import { StorageFactory, ObjectStorage } from '../storage/index.js';
 import { AttachmentRow } from '../db/schema.js';
-import { BackgroundMusicMetadata } from '../services/lottery.service.js';
+import { BackgroundMusicMetadata, validateAudioMagicBytes } from '../services/lottery.service.js';
 
 export interface MigrationOptions {
   dryRun: boolean;
@@ -23,6 +23,7 @@ export interface MigrationSummary {
   musicScanned: number;
   musicMigrated: number;
   musicSkipped: number;
+  musicFailed: number;
   totalBytes: number;
   errors: string[];
 }
@@ -37,6 +38,7 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
     musicScanned: 0,
     musicMigrated: 0,
     musicSkipped: 0,
+    musicFailed: 0,
     totalBytes: 0,
     errors: [],
   };
@@ -100,13 +102,24 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
     }
 
     const localBuffer = fs.readFileSync(localPath);
+
+    // B2 guard: reject zero-byte local buffers or buffers whose size differs from the
+    // DB file_size BEFORE any upload/update (never trust misleading host-like paths).
+    if (localBuffer.length === 0 || localBuffer.length !== att.file_size) {
+      const err = `Attachment ${att.id} (${att.original_name}): REJECTED local buffer of ${localBuffer.length} bytes vs DB file_size ${att.file_size} (zero-byte/size guard). No upload, no DB update.`;
+      console.warn(`[MediaMigration] ⚠️  ${err}`);
+      summary.errors.push(err);
+      summary.attachmentsFailed++;
+      continue;
+    }
+
     const localSha256 = crypto.createHash('sha256').update(localBuffer).digest('hex');
 
-    // Check if already migrated to R2 and verified
+    // Check if already migrated to R2 and verified (size AND SHA-256)
     if (att.storage_provider === 'R2' || att.storage_provider === 'R2_MIRRORED') {
       try {
         const header = await storage.head(targetKey);
-        if (header && header.size === localBuffer.length) {
+        if (header && header.size === localBuffer.length && header.sha256 === localSha256) {
           summary.attachmentsSkipped++;
           continue;
         }
@@ -131,13 +144,17 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
         sha256: localSha256,
       });
 
-      // Verify uploaded object
+      // B1: verify uploaded object size AND SHA-256 (from storage head metadata)
+      // BEFORE any DB update. Mismatch or missing SHA-256 -> record failed, no DB update.
       const verifiedHeader = await storage.head(targetKey);
       if (!verifiedHeader || verifiedHeader.size !== localBuffer.length) {
-        throw new Error(`Verification failed: Uploaded object size mismatch for ${targetKey}`);
+        throw new Error(`Verification failed: uploaded object size mismatch for ${targetKey} (expected ${localBuffer.length}, got ${verifiedHeader ? verifiedHeader.size : 'null'})`);
+      }
+      if (!verifiedHeader.sha256 || verifiedHeader.sha256 !== localSha256) {
+        throw new Error(`Verification failed: uploaded object SHA-256 mismatch for ${targetKey} (expected ${localSha256.substring(0, 8)}..., got ${verifiedHeader.sha256 ? verifiedHeader.sha256.substring(0, 8) + '...' : 'missing'})`);
       }
 
-      // Update DB record
+      // Update DB record only after successful size + SHA-256 verification
       db.prepare(`
         UPDATE attachments
         SET storage_provider = 'R2',
@@ -157,80 +174,143 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
   }
 
   // 2. Migrate Lottery Background Music
+  // B4: candidate paths aligned with LotteryService.getBackgroundMusicFilePath
+  // resolution order: SHARED_MEDIA_PATH first, then container shared path, then
+  // local audio dir, then metadata-backed paths. Music present on disk without a
+  // system_state metadata row is inventoried and migrated with synthesized metadata.
   const musicRow = db.prepare("SELECT value FROM system_state WHERE key = 'lottery_background_music'").get() as { value: string } | undefined;
+
+  let musicMeta: BackgroundMusicMetadata | null = null;
   if (musicRow && musicRow.value) {
+    try {
+      musicMeta = JSON.parse(musicRow.value) as BackgroundMusicMetadata;
+    } catch {
+      musicMeta = null;
+    }
+  }
+
+  const sharedMediaPath = process.env.SHARED_MEDIA_PATH;
+  const musicCandidates = [
+    sharedMediaPath ? path.join(sharedMediaPath, 'lottery_bgm.mp3') : null,
+    '/data/reunion-fund/shared/media/lottery_bgm.mp3',
+    path.join(storageDir, 'audio', 'lottery_bgm.mp3'),
+    path.join(storageDir, 'audio', 'lottery.mp3'),
+    musicMeta?.filename ? path.join(storageDir, 'audio', musicMeta.filename) : null,
+    musicMeta?.filename ? path.join(storageDir, musicMeta.filename) : null,
+    musicMeta?.storageKey ? path.join(storageDir, musicMeta.storageKey) : null,
+  ].filter(Boolean) as string[];
+
+  // Deduplicate while preserving resolution order
+  const uniqueMusicCandidates = [...new Set(musicCandidates.map((p) => path.resolve(p)))];
+
+  let localMusicPath: string | null = null;
+  for (const p of uniqueMusicCandidates) {
+    if (fs.existsSync(p)) {
+      localMusicPath = p;
+      break;
+    }
+  }
+
+  if (musicMeta || localMusicPath) {
     summary.musicScanned = 1;
     try {
-      const musicMeta = JSON.parse(musicRow.value) as BackgroundMusicMetadata;
-      const targetMusicKey = musicMeta.storageKey || `lottery/background/${musicMeta.filename}`;
-
-      const musicCandidates = [
-        path.join(storageDir, 'audio', musicMeta.filename),
-        path.join(storageDir, musicMeta.filename),
-        path.join(storageDir, 'audio', 'lottery_bgm.mp3'),
-        path.join(storageDir, 'audio', 'lottery.mp3'),
-      ];
-
-      let localMusicPath: string | null = null;
-      for (const p of musicCandidates) {
-        if (fs.existsSync(p)) {
-          localMusicPath = p;
-          break;
-        }
-      }
-
-      if (localMusicPath) {
+      if (!localMusicPath) {
+        const err = 'Background music: system_state metadata exists but no local music file was found in any candidate path.';
+        console.warn(`[MediaMigration] ⚠️  ${err}`);
+        summary.errors.push(err);
+        summary.musicFailed++;
+      } else {
         const musicBuffer = fs.readFileSync(localMusicPath);
-        const musicSha256 = crypto.createHash('sha256').update(musicBuffer).digest('hex');
 
-        let isAlreadyMigrated = false;
-        // Check if already migrated to R2 and verified
-        if (musicMeta.storageProvider === 'R2' || musicMeta.storageProvider === 'R2_MIRRORED') {
-          try {
-            const header = await storage.head(targetMusicKey);
-            if (header && header.size === musicBuffer.length) {
-              summary.musicSkipped++;
-              isAlreadyMigrated = true;
-            }
-          } catch {
-            // re-upload if check fails
-          }
-        }
-
-        if (!isAlreadyMigrated) {
-          summary.totalBytes += musicBuffer.length;
-
-          if (options.dryRun) {
-            console.log(`[DRY-RUN] Would upload background music -> ${targetMusicKey} (${musicBuffer.length} bytes, SHA256: ${musicSha256.substring(0, 8)}...)`);
-            summary.musicMigrated++;
+        // B2 guard (music): reject zero-byte or metadata size-mismatched local buffers
+        if (musicBuffer.length === 0 || (musicMeta?.sizeBytes !== undefined && musicBuffer.length !== musicMeta.sizeBytes)) {
+          const err = `Background music (${localMusicPath}): REJECTED zero-byte/size-mismatched local buffer (got ${musicBuffer.length} bytes${musicMeta?.sizeBytes !== undefined ? `, metadata expects ${musicMeta.sizeBytes}` : ''}). No upload, no metadata update.`;
+          console.warn(`[MediaMigration] ⚠️  ${err}`);
+          summary.errors.push(err);
+          summary.musicFailed++;
+        } else {
+          const audioValidation = validateAudioMagicBytes(musicBuffer, localMusicPath);
+          if (!audioValidation.isValid) {
+            const err = `Background music (${localMusicPath}): REJECTED invalid audio format (${audioValidation.error || 'unknown'}). No upload, no metadata update.`;
+            console.warn(`[MediaMigration] ⚠️  ${err}`);
+            summary.errors.push(err);
+            summary.musicFailed++;
           } else {
-            await storage.put(targetMusicKey, musicBuffer, {
-              contentType: musicMeta.mimeType || 'audio/mpeg',
-              contentDisposition: `inline; filename="${encodeURIComponent(musicMeta.originalName)}"`,
-              sha256: musicSha256,
-            });
+            const musicSha256 = crypto.createHash('sha256').update(musicBuffer).digest('hex');
 
-            const verifiedMusic = await storage.head(targetMusicKey);
-            if (!verifiedMusic || verifiedMusic.size !== musicBuffer.length) {
-              throw new Error(`Verification failed for background music ${targetMusicKey}`);
+            // B4: synthesize immutable/versioned key for metadata-less music
+            const synthesizedExt = path.extname(localMusicPath).toLowerCase() || '.mp3';
+            const synthesizedFilename = `lottery_bgm_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${synthesizedExt}`;
+            const targetMusicKey =
+              musicMeta?.storageKey ||
+              (musicMeta?.filename ? `lottery/background/${musicMeta.filename}` : `lottery/background/${synthesizedFilename}`);
+
+            let isAlreadyMigrated = false;
+            // Check if already migrated to R2 and verified (size AND SHA-256)
+            if (musicMeta && (musicMeta.storageProvider === 'R2' || musicMeta.storageProvider === 'R2_MIRRORED')) {
+              try {
+                const header = await storage.head(targetMusicKey);
+                if (header && header.size === musicBuffer.length && header.sha256 === musicSha256) {
+                  summary.musicSkipped++;
+                  isAlreadyMigrated = true;
+                }
+              } catch {
+                // re-upload if check fails
+              }
             }
 
-            const updatedMeta: BackgroundMusicMetadata = {
-              ...musicMeta,
-              storageProvider: 'R2',
-              storageKey: targetMusicKey,
-              sha256: musicSha256,
-              publicUrl: storage.getPublicUrl(targetMusicKey),
-            };
+            if (!isAlreadyMigrated) {
+              summary.totalBytes += musicBuffer.length;
 
-            db.prepare(`
-              UPDATE system_state
-              SET value = ?
-              WHERE key = 'lottery_background_music'
-            `).run(JSON.stringify(updatedMeta));
+              // Authoritative metadata; synthesized for disk-only music with no system_state row
+              const baseMeta: BackgroundMusicMetadata = musicMeta || {
+                filename: synthesizedFilename,
+                originalName: path.basename(localMusicPath),
+                mimeType: audioValidation.mimeType || 'audio/mpeg',
+                sizeBytes: musicBuffer.length,
+                uploadedAt: new Date().toISOString(),
+                actor: 'SYSTEM_MIGRATION',
+                storageProvider: 'LOCAL',
+              };
 
-            console.log(`[EXECUTE] Migrated background music -> ${targetMusicKey} (Verified: ${musicBuffer.length} bytes)`);
-            summary.musicMigrated++;
+              if (options.dryRun) {
+                console.log(`[DRY-RUN] Would upload background music -> ${targetMusicKey} (${musicBuffer.length} bytes, SHA256: ${musicSha256.substring(0, 8)}...)${musicMeta ? '' : ' [metadata-less source: metadata will be synthesized]'}`);
+                summary.musicMigrated++;
+              } else {
+                await storage.put(targetMusicKey, musicBuffer, {
+                  contentType: baseMeta.mimeType || 'audio/mpeg',
+                  contentDisposition: `inline; filename="${encodeURIComponent(baseMeta.originalName)}"`,
+                  sha256: musicSha256,
+                });
+
+                // B1: verify size AND SHA-256 BEFORE any DB/metadata update
+                const verifiedMusic = await storage.head(targetMusicKey);
+                if (!verifiedMusic || verifiedMusic.size !== musicBuffer.length) {
+                  throw new Error(`Verification failed: background music size mismatch for ${targetMusicKey}`);
+                }
+                if (!verifiedMusic.sha256 || verifiedMusic.sha256 !== musicSha256) {
+                  throw new Error(`Verification failed: background music SHA-256 mismatch for ${targetMusicKey}`);
+                }
+
+                const updatedMeta: BackgroundMusicMetadata = {
+                  ...baseMeta,
+                  storageProvider: 'R2',
+                  storageKey: targetMusicKey,
+                  sha256: musicSha256,
+                  publicUrl: storage.getPublicUrl(targetMusicKey),
+                };
+
+                // Upsert covers both existing metadata rows and metadata-less synthesis
+                db.prepare(`
+                  INSERT INTO system_state (key, value)
+                  VALUES ('lottery_background_music', ?)
+                  ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                `).run(JSON.stringify(updatedMeta));
+
+                console.log(`[EXECUTE] Migrated background music -> ${targetMusicKey} (Verified: ${musicBuffer.length} bytes, SHA256: ${musicSha256.substring(0, 8)}...)${musicMeta ? '' : ' [metadata synthesized]'}`);
+                summary.musicMigrated++;
+              }
+            }
           }
         }
       }
@@ -238,6 +318,7 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
       const errMsg = `Failed to migrate background music: ${err?.message || err}`;
       console.error(`[MediaMigration] ❌ ${errMsg}`);
       summary.errors.push(errMsg);
+      summary.musicFailed++;
     }
   }
 
@@ -246,7 +327,7 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
   console.log(`==================================================`);
   console.log(`[MediaMigration] Migration Completed`);
   console.log(`Attachments: ${summary.attachmentsMigrated} migrated, ${summary.attachmentsSkipped} skipped, ${summary.attachmentsFailed} failed (Total: ${summary.attachmentsScanned})`);
-  console.log(`Background Music: ${summary.musicMigrated} migrated (Total: ${summary.musicScanned})`);
+  console.log(`Background Music: ${summary.musicMigrated} migrated, ${summary.musicSkipped} skipped, ${summary.musicFailed} failed (Total: ${summary.musicScanned})`);
   console.log(`Total Bytes Transferred: ${summary.totalBytes} bytes`);
   console.log(`==================================================`);
 

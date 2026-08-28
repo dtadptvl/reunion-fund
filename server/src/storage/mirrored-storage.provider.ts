@@ -26,11 +26,14 @@ export class MirroredStorageProvider implements ObjectStorage {
     // 1. Primary write (R2)
     await this.primary.put(key, data, metadata);
 
-    // 2. Local mirror write
+    // 2. Local mirror write — FAIL-CLOSED.
+    // H2 contract requires a local mirror for every new write (lossless rollback).
+    // A mirror write failure must fail the whole put; it must never degrade silently.
     try {
       await this.mirror.put(key, data, metadata);
     } catch (err) {
-      console.warn(`[MirroredStorageProvider] Warning: Failed to write to local mirror for key ${key}:`, err);
+      console.error(`[MirroredStorageProvider] Fail-closed: local mirror write failed for key ${key}:`, err);
+      throw err;
     }
   }
 

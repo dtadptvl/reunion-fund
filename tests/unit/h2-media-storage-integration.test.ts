@@ -262,4 +262,113 @@ describe('H2 Media Storage & Service Integration Tests', () => {
       expect(res.headers.location).toBe(`/media/${meta.storageKey}`);
     });
   });
+
+  describe('B3 Read-path provenance: LOCAL records stream locally even in R2 app mode', () => {
+    function makeSpyR2Storage(calls: string[]): ObjectStorage {
+      return {
+        providerName: 'R2',
+        put: async (k) => {
+          calls.push(`put:${k}`);
+        },
+        get: async (k) => {
+          calls.push(`get:${k}`);
+          return null;
+        },
+        getStream: async (k) => {
+          calls.push(`getStream:${k}`);
+          return null;
+        },
+        head: async (k) => {
+          calls.push(`head:${k}`);
+          return null;
+        },
+        delete: async (k) => {
+          calls.push(`delete:${k}`);
+        },
+        getPublicUrl: (k) => `/media/${k}`,
+      };
+    }
+
+    async function buildR2ModeApp(r2Storage: ObjectStorage) {
+      const r2App = buildApp({
+        db,
+        authService,
+        attachmentService: new AttachmentService(db, r2Storage, tempDir),
+        lotteryService: new LotteryService(db, tempDir, r2Storage),
+        storage: r2Storage,
+        bankSyncProvider: new MockBankSyncProvider(),
+        aiProvider: new MockAIProvider(),
+      });
+      await r2App.ready();
+      return r2App;
+    }
+
+    it('LOCAL attachment row streams local bytes (no redirect, no R2 consult) when app runs R2 mode', async () => {
+      const calls: string[] = [];
+      const r2Storage = makeSpyR2Storage(calls);
+      const r2App = await buildR2ModeApp(r2Storage);
+
+      try {
+        const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xaa, 0xbb]);
+        fs.mkdirSync(path.join(tempDir, 'receipts'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, 'receipts', 'legacy_local_receipt.png'), pngBytes);
+
+        db.prepare(`
+          INSERT INTO attachments (
+            id, expense_id, file_name, original_name, mime_type, file_size, sha256_hash, storage_path, storage_provider, storage_key, uploaded_by, created_at
+          ) VALUES ('att-legacy-local', 'exp-1', 'legacy_local_receipt.png', 'legacy.png', 'image/png', ?, 'legacysha', ?, 'LOCAL', 'receipts/legacy_local_receipt.png', 'admin', CURRENT_TIMESTAMP)
+        `).run(pngBytes.length, path.join(tempDir, 'receipts', 'legacy_local_receipt.png'));
+
+        const res = await r2App.inject({ method: 'GET', url: '/api/v1/public/attachments/att-legacy-local' });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.headers.location).toBeUndefined();
+        expect(res.headers['content-type']).toBe('image/png');
+        expect(res.headers['x-content-type-options']).toBe('nosniff');
+        expect(res.rawPayload.equals(pngBytes)).toBe(true);
+        // LOCAL row must never be resolved through the app-level R2 storage
+        expect(calls.filter((c) => c.startsWith('get:') || c.startsWith('getStream:') || c.startsWith('head:'))).toHaveLength(0);
+      } finally {
+        await r2App.close();
+      }
+    });
+
+    it('LOCAL-provenance music streams local bytes (no redirect) when app runs R2 mode', async () => {
+      const calls: string[] = [];
+      const r2Storage = makeSpyR2Storage(calls);
+      const r2App = await buildR2ModeApp(r2Storage);
+
+      try {
+        const mp3Bytes = Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00Legacy Local BGM');
+        const audioDir = path.join(tempDir, 'audio');
+        fs.mkdirSync(audioDir, { recursive: true });
+        fs.writeFileSync(path.join(audioDir, 'legacy_track.mp3'), mp3Bytes);
+
+        db.prepare(`
+          INSERT INTO system_state (key, value)
+          VALUES ('lottery_background_music', ?)
+        `).run(
+          JSON.stringify({
+            filename: 'legacy_track.mp3',
+            originalName: 'legacy.mp3',
+            mimeType: 'audio/mpeg',
+            sizeBytes: mp3Bytes.length,
+            uploadedAt: new Date().toISOString(),
+            actor: 'admin',
+            storageProvider: 'LOCAL',
+          })
+        );
+
+        const res = await r2App.inject({ method: 'GET', url: '/api/v1/public/lottery/background-music' });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.headers.location).toBeUndefined();
+        expect(res.rawPayload.equals(mp3Bytes)).toBe(true);
+        // LOCAL-provenance music must never be resolved through the app-level R2 storage
+        expect(calls.filter((c) => c.startsWith('get:') || c.startsWith('getStream:') || c.startsWith('head:'))).toHaveLength(0);
+      } finally {
+        await r2App.close();
+      }
+    });
+  });
 });

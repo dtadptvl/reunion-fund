@@ -8,6 +8,7 @@ import {
   R2StorageProvider,
   MirroredStorageProvider,
   StorageFactory,
+  ObjectStorage,
 } from '../../server/src/storage/index.js';
 
 describe('Storage Abstraction Layer: Unit Tests', () => {
@@ -288,6 +289,45 @@ describe('Storage Abstraction Layer: Unit Tests', () => {
         R2_BUCKET: 'reunion-fund-stage-media',
       });
       expect(storage.providerName).toBe('R2_MIRRORED');
+    });
+  });
+
+  describe('MirroredStorageProvider Fail-Closed (B5)', () => {
+    it('fails closed when local mirror write fails on put', async () => {
+      const primary = new LocalStorageProvider(path.join(tempDir, 'primary'));
+      const failingMirror: ObjectStorage = {
+        providerName: 'LOCAL',
+        put: async () => {
+          throw new Error('mirror disk full');
+        },
+        get: async () => null,
+        getStream: async () => null,
+        head: async () => null,
+        delete: async () => {},
+        getPublicUrl: (k) => `/media/${k}`,
+      };
+
+      const mirrored = new MirroredStorageProvider(primary, failingMirror);
+      await expect(mirrored.put('receipts/mirror_fail.jpg', Buffer.from('data'))).rejects.toThrow('mirror disk full');
+    });
+
+    it('mirror delete failure remains warn-only and does not fail the delete', async () => {
+      const primary = new LocalStorageProvider(path.join(tempDir, 'primary'));
+      const fragileMirror: ObjectStorage = {
+        providerName: 'LOCAL',
+        put: async () => {},
+        get: async () => null,
+        getStream: async () => null,
+        head: async () => null,
+        delete: async () => {
+          throw new Error('mirror delete denied');
+        },
+        getPublicUrl: (k) => `/media/${k}`,
+      };
+
+      const mirrored = new MirroredStorageProvider(primary, fragileMirror);
+      await mirrored.put('receipts/delete_ok.jpg', Buffer.from('data'));
+      await expect(mirrored.delete('receipts/delete_ok.jpg')).resolves.toBeUndefined();
     });
   });
 });
