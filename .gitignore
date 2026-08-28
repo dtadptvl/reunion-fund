@@ -55,3 +55,6 @@ playwright-report/
 *.sw?
 .DS_Store
 Thumbs.db
+
+# Local evidence/artifacts (screenshots, scratch)
+artifacts/

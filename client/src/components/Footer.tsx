@@ -14,31 +14,11 @@ export const Footer: React.FC<FooterProps> = ({ currentUser, onSelectTab }) => {
         </div>
         <div>
           {currentUser?.role === 'ADMIN' ? (
-            <button
-              onClick={() => onSelectTab('admin')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                textDecoration: 'underline',
-              }}
-            >
+            <button onClick={() => onSelectTab('admin')} className="footer-link-btn">
               Bảng điều khiển Quản trị
             </button>
           ) : !currentUser ? (
-            <button
-              onClick={() => onSelectTab('login')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                textDecoration: 'underline',
-              }}
-            >
+            <button onClick={() => onSelectTab('login')} className="footer-link-btn">
               Đăng nhập
             </button>
           ) : null}

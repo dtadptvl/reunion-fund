@@ -109,34 +109,11 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({
 
         <div style={{ padding: '24px 0 0 0' }}>
           {error && (
-            <div
-              style={{
-                padding: '12px 16px',
-                background: 'var(--danger-bg)',
-                color: 'var(--danger-text)',
-                borderRadius: 'var(--radius-md)',
-                marginBottom: '16px',
-                fontSize: '0.9rem',
-              }}
-            >
-              {error}
-            </div>
+            <div className="alert-box alert-danger" role="alert">{error}</div>
           )}
 
           {infoMessage && (
-            <div
-              style={{
-                padding: '12px 16px',
-                background: 'var(--primary-light, #eff6ff)',
-                color: 'var(--primary, #1e40af)',
-                borderRadius: 'var(--radius-md)',
-                marginBottom: '16px',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-              }}
-            >
-              {infoMessage}
-            </div>
+            <div className="alert-box alert-success" role="status">{infoMessage}</div>
           )}
 
           <form onSubmit={handleVerify}>
@@ -146,15 +123,12 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({
               </label>
               <input
                 type="email"
+                className="form-input"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-color)',
-                }}
+                autoComplete="email"
+                inputMode="email"
               />
             </div>
 
@@ -166,6 +140,8 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({
                 type="text"
                 required
                 maxLength={6}
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 placeholder="123456"
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
@@ -196,7 +172,7 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({
 
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-outline"
               style={{ width: '100%', padding: '10px' }}
               onClick={handleResend}
               disabled={resending}

@@ -198,6 +198,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
                 type="text"
                 className={`form-input ${selectedMemberId ? 'input-selected' : isGuestMode ? 'input-guest' : ''}`}
                 placeholder="Gõ để tìm tên..."
+                autoComplete="off"
                 value={searchQuery}
                 onFocus={() => setShowSuggestions(true)}
                 onChange={(e) => {
@@ -275,6 +276,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               type="text"
               className="form-input"
               placeholder="Nhập họ và tên hoặc tổ chức của bạn..."
+              autoComplete="name"
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
               required

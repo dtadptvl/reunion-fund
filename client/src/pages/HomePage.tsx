@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import schoolLogo from '../assets/school-logo.jpg';
 import { formatVND, formatDateVN, getCategoryLabelVN } from '../utils/format.js';
 import { FundGoalProgress } from '../components/FundGoalProgress.js';
 
@@ -25,13 +26,19 @@ export const HomePage: React.FC<HomePageProps> = ({ onGoToContribute, onGoToActi
   }, []);
 
   if (loading || !overview) {
-    return <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải dữ liệu quỹ lớp...</div>;
+    return (
+      <div className="page-loading">
+        <div className="spinner" aria-hidden="true" />
+        <span>Đang tải dữ liệu quỹ lớp...</span>
+      </div>
+    );
   }
 
   return (
     <div>
       {/* Hero Section */}
       <section className="hero-card">
+        <img src={schoolLogo} alt="Logo Trường THPT Văn Lâm" className="hero-logo" />
         <div className="hero-subtitle">KỶ NIỆM 10 NĂM RA TRƯỜNG</div>
         <h1 className="hero-title">{overview.eventTitle || 'LỚP A1 — KHÓA 48'}</h1>
         <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '16px' }}>
