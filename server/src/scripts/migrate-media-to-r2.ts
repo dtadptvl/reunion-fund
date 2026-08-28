@@ -335,7 +335,9 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
 }
 
 // CLI Execution entry point
-if (process.argv[1] && process.argv[1].endsWith('migrate-media-to-r2.ts')) {
+// Accept both source (.ts, e.g. tsx) and built (.js) entry points
+const entryFile = process.argv[1] ?? '';
+if (entryFile.endsWith('migrate-media-to-r2.ts') || entryFile.endsWith('migrate-media-to-r2.js')) {
   const isExecute = process.argv.includes('--execute');
   const dryRun = !isExecute;
 
