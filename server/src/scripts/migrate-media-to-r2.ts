@@ -51,6 +51,8 @@ export async function runMediaMigration(options: MigrationOptions): Promise<Migr
   }
 
   const db = new Database(dbPath);
+  // Deterministic guard: tolerate transient locks held by the live server (WAL)
+  db.pragma('busy_timeout = 10000');
 
   // Initialize R2 storage provider
   const storage =
