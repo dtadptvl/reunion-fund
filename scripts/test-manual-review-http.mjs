@@ -1,7 +1,12 @@
 import http from 'http';
 
-const username = process.env.ADMIN_USERNAME || 'thuquy';
-const password = process.env.ADMIN_PASSWORD || '123456';
+const username = process.env.ADMIN_USERNAME;
+const password = process.env.ADMIN_PASSWORD;
+
+if (!username || !password) {
+  console.error('Missing required environment variables: ADMIN_USERNAME and ADMIN_PASSWORD must be set.');
+  process.exit(1);
+}
 
 function request(options, data) {
   return new Promise((resolve, reject) => {
