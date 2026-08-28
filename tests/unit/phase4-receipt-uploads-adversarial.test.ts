@@ -74,16 +74,16 @@ describe('Phase 4: Adversarial Receipt Upload Hardening & Magic-Byte Validation'
   });
 
   // 2. Adversarial Rejection Tests
-  it('rejects renamed Windows PE / DOS Executable disguised as JPG', () => {
+  it('rejects renamed Windows PE / DOS Executable disguised as JPG', async () => {
     // Starts with MZ header
     const fakeJpg = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00]);
     const res = validateAttachmentMagicBytes(fakeJpg);
     expect(res.isValid).toBe(false);
     expect(res.error).toContain('Định dạng tập tin bị cấm');
 
-    expect(() => {
-      attachmentService.saveAttachment('exp-1', 'receipt.jpg', fakeJpg);
-    }).toThrow();
+    await expect(
+      attachmentService.saveAttachment('exp-1', 'receipt.jpg', fakeJpg)
+    ).rejects.toThrow();
   });
 
   it('rejects renamed ELF Linux Binary disguised as PNG', () => {
@@ -107,21 +107,21 @@ describe('Phase 4: Adversarial Receipt Upload Hardening & Magic-Byte Validation'
     expect(res.isValid).toBe(false);
   });
 
-  it('rejects oversized uploads exceeding 10MB', () => {
+  it('rejects oversized uploads exceeding 10MB', async () => {
     const oversizedPdf = Buffer.alloc(10 * 1024 * 1024 + 1024);
     oversizedPdf.write('%PDF-1.4', 0);
 
-    expect(() => {
-      attachmentService.saveAttachment('exp-1', 'large.pdf', oversizedPdf);
-    }).toThrow('Kích thước chứng từ vượt quá giới hạn 10MB');
+    await expect(
+      attachmentService.saveAttachment('exp-1', 'large.pdf', oversizedPdf)
+    ).rejects.toThrow('Kích thước chứng từ vượt quá giới hạn 10MB');
   });
 
   // 3. Path Traversal & Safe Storage
-  it('neutralizes path traversal attempts in filename', () => {
+  it('neutralizes path traversal attempts in filename', async () => {
     const validPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const maliciousName = '../../../../etc/passwd';
 
-    const attachment = attachmentService.saveAttachment('exp-safe-1', maliciousName, validPng);
+    const attachment = await attachmentService.saveAttachment('exp-safe-1', maliciousName, validPng);
     expect(attachment.file_name).not.toContain('..');
 
     const safePath = attachmentService.getSafeFilePath(attachment);

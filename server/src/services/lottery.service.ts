@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { sortVietnameseMembers, extractGivenName } from './member.service.js';
 import { config } from '../config/env.js';
+import { ObjectStorage, LocalStorageProvider } from '../storage/index.js';
 
 export interface MemberLotteryItem {
   id: string;
@@ -76,6 +77,10 @@ export interface BackgroundMusicMetadata {
   sizeBytes: number;
   uploadedAt: string;
   actor: string;
+  storageProvider?: string;
+  storageKey?: string;
+  sha256?: string;
+  publicUrl?: string;
 }
 
 export interface LuckyWheelState {
@@ -144,18 +149,18 @@ export function validateAudioMagicBytes(
     return { isValid: true, mimeType: 'audio/ogg' };
   }
 
-  // 4. M4A / MP4 audio: offset 4: "ftyp" (66 74 79 70)
+  // 4. M4A audio: ....ftypM4A (or mp42, isom)
   if (
     buffer.length >= 12 &&
-    buffer[4] === 0x66 &&
-    buffer[5] === 0x74 &&
-    buffer[6] === 0x79 &&
-    buffer[7] === 0x70
+    buffer[4] === 0x66 && // f
+    buffer[5] === 0x74 && // t
+    buffer[6] === 0x79 && // y
+    buffer[7] === 0x70 // p
   ) {
     return { isValid: true, mimeType: 'audio/mp4' };
   }
 
-  // Fallback by safe extension
+  // Fallback by extension for valid standard audio payloads
   if (originalFilename) {
     const ext = path.extname(originalFilename).toLowerCase();
     if (ext === '.mp3') return { isValid: true, mimeType: 'audio/mpeg' };
@@ -166,15 +171,30 @@ export function validateAudioMagicBytes(
   return {
     isValid: false,
     mimeType: null,
-    error: 'Định dạng tập tin không được hỗ trợ (chỉ chấp nhận MP3, M4A, OGG).',
+    error: 'Định dạng tập tin âm thanh không hợp lệ. Chỉ chấp nhận MP3, M4A hoặc OGG.',
   };
 }
 
 export class LotteryService {
   private storageDir: string;
+  private storage: ObjectStorage;
 
-  constructor(private db: Database.Database, storageDir: string = config.STORAGE_PATH) {
-    this.storageDir = storageDir;
+  constructor(
+    private db: Database.Database,
+    storageDirOrStorage: string | ObjectStorage = config.STORAGE_PATH,
+    storageOverride?: ObjectStorage
+  ) {
+    if (typeof storageDirOrStorage === 'string') {
+      this.storageDir = storageDirOrStorage;
+      this.storage = storageOverride || new LocalStorageProvider(storageDirOrStorage);
+    } else {
+      this.storage = storageDirOrStorage;
+      this.storageDir = config.STORAGE_PATH;
+    }
+  }
+
+  getStorage(): ObjectStorage {
+    return this.storage;
   }
 
   /**
@@ -602,6 +622,25 @@ export class LotteryService {
   // ==========================================
 
   getBackgroundMusicMetadata(): BackgroundMusicMetadata | null {
+    const row = this.db
+      .prepare("SELECT value FROM system_state WHERE key = 'lottery_background_music'")
+      .get() as { value: string } | undefined;
+
+    if (row && row.value) {
+      try {
+        const meta = JSON.parse(row.value) as BackgroundMusicMetadata;
+        if (meta) {
+          if (!meta.publicUrl && meta.storageKey) {
+            meta.publicUrl = this.storage.getPublicUrl(meta.storageKey);
+          }
+          return meta;
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    // Fallback: Check persistent shared media locations (priority for legacy/local)
     const audio = this.getBackgroundMusicFilePath();
     if (audio && fs.existsSync(audio.filePath)) {
       try {
@@ -613,22 +652,16 @@ export class LotteryService {
           sizeBytes: stats.size,
           uploadedAt: stats.mtime.toISOString(),
           actor: 'SYSTEM_PERSISTENT',
+          storageProvider: 'LOCAL',
+          storageKey: `lottery/background/${path.basename(audio.filePath)}`,
+          publicUrl: `/media/lottery/background/${path.basename(audio.filePath)}`,
         };
       } catch {
         // fallback
       }
     }
 
-    const row = this.db
-      .prepare("SELECT value FROM system_state WHERE key = 'lottery_background_music'")
-      .get() as { value: string } | undefined;
-
-    if (!row || !row.value) return null;
-    try {
-      return JSON.parse(row.value) as BackgroundMusicMetadata;
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   getBackgroundMusicFilePath(): { filePath: string; mimeType: string } | null {
@@ -660,6 +693,13 @@ export class LotteryService {
           if (fs.existsSync(fullPath)) {
             return { filePath: fullPath, mimeType: meta.mimeType || 'audio/mpeg' };
           }
+          // Also check storageKey relative to storageDir
+          if (meta.storageKey) {
+            const keyPath = path.join(this.storageDir, meta.storageKey);
+            if (fs.existsSync(keyPath)) {
+              return { filePath: keyPath, mimeType: meta.mimeType || 'audio/mpeg' };
+            }
+          }
         }
       } catch {
         // ignore
@@ -669,33 +709,25 @@ export class LotteryService {
     return null;
   }
 
-  saveBackgroundMusic(buffer: Buffer, originalFilename: string, actor: string): BackgroundMusicMetadata {
+  async saveBackgroundMusic(buffer: Buffer, originalFilename: string, actor: string): Promise<BackgroundMusicMetadata> {
     const validation = validateAudioMagicBytes(buffer, originalFilename);
     if (!validation.isValid || !validation.mimeType) {
       throw new Error(validation.error || 'Tập tin âm thanh không hợp lệ.');
     }
 
-    const audioDir = path.join(this.storageDir, 'audio');
-    if (!fs.existsSync(audioDir)) {
-      fs.mkdirSync(audioDir, { recursive: true });
-    }
-
-    // Remove any previous music file
-    const oldMeta = this.getBackgroundMusicMetadata();
-    if (oldMeta) {
-      try {
-        const oldFile = path.join(audioDir, oldMeta.filename);
-        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
-      } catch {
-        // ignore
-      }
-    }
-
     const ext = path.extname(originalFilename).toLowerCase() || '.mp3';
     const safeFilename = `lottery_bgm_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
-    const targetPath = path.join(audioDir, safeFilename);
+    const storageKey = `lottery/background/${safeFilename}`;
+    const sha256Hash = crypto.createHash('sha256').update(buffer).digest('hex');
 
-    fs.writeFileSync(targetPath, buffer);
+    // 1. Write new audio to storage abstraction first (writes R2 + local mirror if mirrored)
+    await this.storage.put(storageKey, buffer, {
+      contentType: validation.mimeType,
+      contentDisposition: `inline; filename="${encodeURIComponent(path.basename(originalFilename))}"`,
+      sha256: sha256Hash,
+    });
+
+    const oldMeta = this.getBackgroundMusicMetadata();
 
     const meta: BackgroundMusicMetadata = {
       filename: safeFilename,
@@ -704,8 +736,23 @@ export class LotteryService {
       sizeBytes: buffer.length,
       uploadedAt: new Date().toISOString(),
       actor,
+      storageProvider: this.storage.providerName,
+      storageKey,
+      sha256: sha256Hash,
+      publicUrl: this.storage.getPublicUrl(storageKey),
     };
 
+    // Also write to legacy audio dir if in local mode for backward compatibility
+    const legacyAudioDir = path.join(this.storageDir, 'audio');
+    if (!fs.existsSync(legacyAudioDir)) {
+      try {
+        fs.mkdirSync(legacyAudioDir, { recursive: true });
+      } catch {
+        // ignore
+      }
+    }
+
+    // 2. Update DB metadata
     const tx = this.db.transaction(() => {
       this.db
         .prepare(`
@@ -732,21 +779,56 @@ export class LotteryService {
         );
     });
 
-    tx();
+    try {
+      tx();
+    } catch (dbErr) {
+      // Best-effort compensation of new object if DB fails
+      try {
+        await this.storage.delete(storageKey);
+      } catch (storageDelErr) {
+        console.warn('[LotteryService] Failed to compensate storage audio on DB error:', storageDelErr);
+      }
+      throw dbErr;
+    }
+
+    // 3. ONLY after successful metadata switch, delete old audio object best-effort
+    if (oldMeta && oldMeta.storageKey) {
+      try {
+        await this.storage.delete(oldMeta.storageKey);
+      } catch (err) {
+        console.warn('[LotteryService] Warning: Failed to delete old music object:', err);
+      }
+    } else if (oldMeta && oldMeta.filename) {
+      const oldFile = path.join(legacyAudioDir, oldMeta.filename);
+      try {
+        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      } catch {
+        // ignore
+      }
+    }
 
     return meta;
   }
 
-  deleteBackgroundMusic(actor: string): void {
+  async deleteBackgroundMusic(actor: string): Promise<void> {
     const oldMeta = this.getBackgroundMusicMetadata();
     if (!oldMeta) return;
 
-    const audioDir = path.join(this.storageDir, 'audio');
-    const oldFile = path.join(audioDir, oldMeta.filename);
-    try {
-      if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
-    } catch {
-      // ignore
+    // Delete from storage
+    if (oldMeta.storageKey) {
+      try {
+        await this.storage.delete(oldMeta.storageKey);
+      } catch (err) {
+        console.warn('[LotteryService] Failed to delete music from storage:', err);
+      }
+    } else if (oldMeta.filename) {
+      const legacyAudioDir = path.join(this.storageDir, 'audio');
+      const oldFile = path.join(legacyAudioDir, oldMeta.filename);
+      try {
+        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      } catch {
+        // ignore
+      }
     }
 
     const tx = this.db.transaction(() => {

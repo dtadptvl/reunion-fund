@@ -1,17 +1,15 @@
 # ==============================================================================
 # REUNION FUND — DOCKERFILE (FAST & RELIABLE BUILD)
 # ==============================================================================
-FROM reunion-fund:stage AS base
-
 FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-# Reuse verified ARM64 node_modules from base staging image
-COPY --from=base /app/node_modules ./node_modules
+# Reconcile production dependencies deterministically from package-lock.json
 COPY package*.json ./
+RUN npm ci --omit=dev
 
 # Copy compiled application code and migrations
 COPY server/dist ./server/dist

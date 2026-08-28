@@ -12,6 +12,13 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().default('./data/reunion.db'),
   STORAGE_PATH: z.string().default('./data/uploads'),
 
+  STORAGE_PROVIDER: z.enum(['LOCAL', 'R2', 'R2_MIRRORED']).default('LOCAL'),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().default('reunion-fund-stage-media'),
+  R2_PUBLIC_BASE_URL: z.string().default('/media'),
+
   BANK_SYNC_PROVIDER: z.enum(['SEPAY', 'MOCK']).default('SEPAY'),
   SEPAY_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
   SEPAY_BASE_URL: z.string().default('https://userapi-sandbox.sepay.vn/v2'),
